@@ -1,3 +1,4 @@
+import wandb
 import os
 import argparse
 import torch
@@ -175,6 +176,14 @@ def main():
     args = parser.parse_args()
 
     cfg = build_config(args, args.config_file)
+    
+    # Initialize wandb
+    wandb.init(
+        project="person-reid-bpbreid",
+        name=f"test_{cfg.project.job_id}",
+        config=cfg,
+        tags=["testing", "bpbreid", "market1501"]
+    )
 
     engine, model = build_torchreid_model_engine(cfg)
     print('Starting experiment {} with job id {} and creation date {}'.format(cfg.project.experiment_id,

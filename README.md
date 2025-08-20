@@ -253,3 +253,4 @@ If you use this repository for your research or wish to refer to our method [BPB
 This codebase is a fork from [Torchreid](https://github.com/KaiyangZhou/deep-person-reid)
 
 
+# BBPReid

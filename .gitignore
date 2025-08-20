@@ -141,3 +141,7 @@ pretrained_models/
 debug*
 /.idea/
 /configs_user/
+
+# Dataset folders
+datasets/Market-1501-v15.09.15/
+datasets/Occluded_Duke/

@@ -1,3 +1,5 @@
+import wandb
+
 import ntpath
 import random
 
@@ -161,6 +163,15 @@ def show_ranking_grid(query_sample, gallery_topk_samples, mAP, rank1, dataset_na
     # Path(os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
     # cv2.imwrite(path, grid_img)
     Logger.current_logger().add_image("Ranking grid", filename, cv2.cvtColor(grid_img, cv2.COLOR_BGR2RGB), EngineState.current_engine_state().epoch)
+
+    # wandb logging
+    if wandb.run is not None:
+        wandb.log({
+            f"ranking_grid/{filename}": wandb.Image(
+                cv2.cvtColor(grid_img, cv2.COLOR_BGR2RGB), 
+                caption=f"Query PID: {qpid}, mAP: {mAP:.3f}, Rank1: {rank1:.3f}"
+            )
+        })
 
 
 def insert_background_line(grid_img, match_color, row, height, padding_top=0, padding_bottom=0):

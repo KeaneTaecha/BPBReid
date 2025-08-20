@@ -1,5 +1,5 @@
 data:
-  root: '~/datasets/reid'
+  root: '/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets'
   sources: ['market1501']
   targets: ['market1501']
   height: 384
@@ -22,5 +22,5 @@ model:
 
 test:
   evaluate: True
-  batch_size: 64
+  batch_size: 16
   visrank: True

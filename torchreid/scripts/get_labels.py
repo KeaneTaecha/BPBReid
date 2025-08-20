@@ -182,7 +182,7 @@ class BatchPifPaf:
         """
         models = [
             'resnet50',
-            'shufflenetv2k16',
+            'shufflenetv2k16',def filter_pifpaf_with_mask(pifpaf_array, mask):
             'shufflenetv2k30',
         ]
         assert model_name in models, f"Model name must be one of {models}"

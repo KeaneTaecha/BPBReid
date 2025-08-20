@@ -1,0 +1,26 @@
+data:
+  root: '/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets'
+  sources: ['occluded_duke']  # Train on Occluded_Duke
+  targets: ['occluded_duke']  # Test on Occluded_Duke
+  height: 384
+  width: 128
+  transforms: ['rc', 're']  # Random crop + random erase
+
+model:
+  name: 'bpbreid'
+  load_weights: 'pretrained_models/bpbreid_market1501_hrnet32_10642.pth'  # Market-1501 weights
+  load_config: True  # Load architecture config from the weights
+  bpbreid:
+    mask_filtering_training: False  # Disable mask filtering during training (if masks are missing)
+    mask_filtering_testing: True    # Enable mask filtering during testing (requires masks)
+    learnable_attention_enabled: True
+    backbone: 'hrnet32'
+    test_embeddings: ['bn_foreg', 'parts']
+    masks:
+      dir: 'pifpaf_maskrcnn_filtering'
+      preprocess: 'five_v'
+
+test:
+  evaluate: True
+  batch_size: 16
+  visrank: True

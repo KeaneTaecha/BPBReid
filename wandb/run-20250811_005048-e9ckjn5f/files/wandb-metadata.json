@@ -1,0 +1,39 @@
+{
+  "os":  "macOS-10.16-x86_64-i386-64bit",
+  "python":  "CPython 3.10.18",
+  "startedAt":  "2025-08-11T04:50:48.653455Z",
+  "args":  [
+    "--config-file",
+    "configs/bpbreid/bpbreid_market1501_test.yaml"
+  ],
+  "program":  "-m torchreid.scripts.main",
+  "git":  {
+    "remote":  "https://github.com/VlSomers/bpbreid.git",
+    "commit":  "82c6f2a6f1f4be34d8612e2372cafde9b03bcaef"
+  },
+  "email":  "kunanontkeane@gmail.com",
+  "root":  "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid",
+  "host":  "Kunanonts-MacBook-Pro.local",
+  "executable":  "/Users/kunanonttaechaaukarkaul/opt/anaconda3/envs/bpbreid/bin/python",
+  "cpu_count":  8,
+  "cpu_count_logical":  8,
+  "disk":  {
+    "/":  {
+      "total":  "494384795648",
+      "used":  "482403237888"
+    }
+  },
+  "memory":  {
+    "total":  "17179869184"
+  },
+  "apple":  {
+    "name":  "Unknown",
+    "ecpuCores":  2,
+    "pcpuCores":  6,
+    "gpuCores":  14,
+    "memoryGb":  16,
+    "swapTotalBytes":  "3221225472",
+    "ramTotalBytes":  "17179869184"
+  },
+  "writerId":  "4coh40kk3ixvuw81e3hb4eh1cbgchurq"
+}
