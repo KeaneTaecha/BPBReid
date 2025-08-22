@@ -255,23 +255,23 @@ class BPBreIDSimpleMaskReID:
                     # Head keypoints (0-4) - upper part of person
                     if i < 5:
                         head_region = person_mask[:h//5, :]
-                        pifpaf_fields[i] = torch.from_numpy(head_region) * (0.8 + 0.2 * torch.rand_like(torch.from_numpy(head_region)))
+                        pifpaf_fields[i, :h//5, :] = torch.from_numpy(head_region) * (0.8 + 0.2 * torch.rand_like(torch.from_numpy(head_region)))
                     # Shoulder keypoints (5-6) - upper-middle part
                     elif i < 7:
                         shoulder_region = person_mask[h//5:h//3, :]
-                        pifpaf_fields[i] = torch.from_numpy(shoulder_region) * (0.7 + 0.3 * torch.rand_like(torch.from_numpy(shoulder_region)))
+                        pifpaf_fields[i, h//5:h//3, :] = torch.from_numpy(shoulder_region) * (0.7 + 0.3 * torch.rand_like(torch.from_numpy(shoulder_region)))
                     # Arm keypoints (7-10) - middle part
                     elif i < 11:
                         arm_region = person_mask[h//3:h//2, :]
-                        pifpaf_fields[i] = torch.from_numpy(arm_region) * (0.6 + 0.4 * torch.rand_like(torch.from_numpy(arm_region)))
+                        pifpaf_fields[i, h//3:h//2, :] = torch.from_numpy(arm_region) * (0.6 + 0.4 * torch.rand_like(torch.from_numpy(arm_region)))
                     # Hip keypoints (11-12) - lower-middle part
                     elif i < 13:
                         hip_region = person_mask[h//2:2*h//3, :]
-                        pifpaf_fields[i] = torch.from_numpy(hip_region) * (0.7 + 0.3 * torch.rand_like(torch.from_numpy(hip_region)))
+                        pifpaf_fields[i, h//2:2*h//3, :] = torch.from_numpy(hip_region) * (0.7 + 0.3 * torch.rand_like(torch.from_numpy(hip_region)))
                     # Leg keypoints (13-16) - lower part
                     else:
                         leg_region = person_mask[2*h//3:, :]
-                        pifpaf_fields[i] = torch.from_numpy(leg_region) * (0.6 + 0.4 * torch.rand_like(torch.from_numpy(leg_region)))
+                        pifpaf_fields[i, 2*h//3:, :] = torch.from_numpy(leg_region) * (0.6 + 0.4 * torch.rand_like(torch.from_numpy(leg_region)))
                 else:  # Connections
                     # Use full person mask for connections
                     pifpaf_fields[i] = torch.from_numpy(person_mask) * (0.5 + 0.5 * torch.rand_like(torch.from_numpy(person_mask)))
@@ -348,7 +348,9 @@ class BPBreIDSimpleMaskReID:
             
             # Extract features
             with torch.no_grad():
-                gallery_features = self.reid_model(image_tensor, gallery_mask)
+                model_output = self.reid_model(image_tensor, gallery_mask)
+                # BPBreID returns (embeddings, visibility_scores, id_cls_scores, pixels_cls_scores, spatial_features, masks)
+                gallery_features = model_output[0]  # Get embeddings dictionary
             
             # Store gallery features
             self.gallery_features = gallery_features
@@ -389,7 +391,9 @@ class BPBreIDSimpleMaskReID:
             
             # Extract features
             with torch.no_grad():
-                person_features = self.reid_model(image_tensor, person_mask)
+                model_output = self.reid_model(image_tensor, person_mask)
+                # BPBreID returns (embeddings, visibility_scores, id_cls_scores, pixels_cls_scores, spatial_features, masks)
+                person_features = model_output[0]  # Get embeddings dictionary
             
             return person_features
             
@@ -397,12 +401,12 @@ class BPBreIDSimpleMaskReID:
             print(f"Error extracting person features: {e}")
             return None
     
-    def compute_similarity(self, person_features: torch.Tensor) -> float:
+    def compute_similarity(self, person_features: dict) -> float:
         """
         Compute similarity between person features and gallery features
         
         Args:
-            person_features: Features of detected person
+            person_features: Features dictionary of detected person
             
         Returns:
             Similarity score (0-1)
@@ -411,9 +415,13 @@ class BPBreIDSimpleMaskReID:
             return 0.0
         
         try:
+            # Use foreground embeddings for similarity computation
+            gallery_foreground = self.gallery_features['bn_foreg']  # [1, 512]
+            person_foreground = person_features['bn_foreg']  # [1, 512]
+            
             # Compute cosine similarity
-            gallery_norm = F.normalize(self.gallery_features, p=2, dim=1)
-            person_norm = F.normalize(person_features, p=2, dim=1)
+            gallery_norm = F.normalize(gallery_foreground, p=2, dim=1)
+            person_norm = F.normalize(person_foreground, p=2, dim=1)
             
             similarity = F.cosine_similarity(gallery_norm, person_norm, dim=1)
             
@@ -424,6 +432,8 @@ class BPBreIDSimpleMaskReID:
             
         except Exception as e:
             print(f"Error computing similarity: {e}")
+            import traceback
+            traceback.print_exc()
             return 0.0
     
     def visualize_detection(self, frame: np.ndarray, bbox: Tuple[int, int, int, int], 
@@ -555,12 +565,12 @@ class BPBreIDSimpleMaskReID:
                             
                             # Visualize detection
                             vis_frame = self.visualize_detection(
-                                vis_frame, detection, confidence, similarity, i+1
+                                vis_frame, bbox, confidence, similarity, i+1
                             )
                         else:
                             # Failed to extract features - show as red
                             vis_frame = self.visualize_detection(
-                                vis_frame, detection, confidence, 0.0, i+1
+                                vis_frame, bbox, confidence, 0.0, i+1
                             )
                     
                     # Add processing info
