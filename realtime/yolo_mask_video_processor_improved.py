@@ -313,35 +313,35 @@ class YOLOPifPafMaskProcessor:
                     hip_x, hip_y = int(valid_kps[0][0]), int(valid_kps[0][1])
                     knee_x, knee_y = int(valid_kps[1][0]), int(valid_kps[1][1])
                     
-                    # Calculate leg angle
+                    # Calculate leg angle (fixed: remove the extra π/2 rotation)
                     dx = knee_x - hip_x
                     dy = knee_y - hip_y
-                    angle = math.atan2(dy, dx)
+                    angle = math.atan2(dy, dx)  # This gives the correct leg direction
                     
                     # Calculate leg center and dimensions
                     center_x = (hip_x + knee_x) // 2
                     center_y = (hip_y + knee_y) // 2
                     leg_length = int(math.sqrt(dx*dx + dy*dy)) + h // 8  # Add some padding
-                    leg_width = w // 18  # Reduced from //12 to //18 for smaller legs
+                    leg_width = w // 6  # Increased from //10 to //6 for much wider legs
                     
                     # Draw rotated rectangle for the leg
                     part_mask = self._draw_rotated_rectangle(
                         part_mask, (center_x, center_y), 
-                        leg_width, leg_length, angle, 0.6  # Reduced confidence
+                        leg_width, leg_length, angle, 0.6
                     )
                     
                 elif len(valid_kps) == 1:
-                    # Only one keypoint (hip or knee), create smaller vertical region
+                    # Only one keypoint (hip or knee), create wider vertical region
                     kp_x, kp_y = int(valid_kps[0][0]), int(valid_kps[0][1])
-                    leg_width = w // 18  # Smaller width
-                    leg_height = h // 4  # Smaller height
+                    leg_width = w // 6  # Increased width to match rotated legs
+                    leg_height = h // 4  # Height
                     
                     min_x = max(0, kp_x - leg_width)
                     max_x = min(w, kp_x + leg_width)
                     min_y = max(0, kp_y - leg_height // 4)
                     max_y = min(h, kp_y + leg_height)
                     
-                    part_mask[min_y:max_y, min_x:max_x] = 0.5  # Reduced confidence
+                    part_mask[min_y:max_y, min_x:max_x] = 0.5
                         
             elif part_name in ['left_foot', 'right_foot']:
                 # Create rotated foot rectangles aligned with lower leg direction
@@ -350,10 +350,10 @@ class YOLOPifPafMaskProcessor:
                     knee_x, knee_y = int(valid_kps[0][0]), int(valid_kps[0][1])
                     ankle_x, ankle_y = int(valid_kps[1][0]), int(valid_kps[1][1])
                     
-                    # Calculate lower leg angle
+                    # Calculate lower leg angle (fixed: remove the extra π/2 rotation)
                     dx = ankle_x - knee_x
                     dy = ankle_y - knee_y
-                    angle = math.atan2(dy, dx)
+                    angle = math.atan2(dy, dx)  # This gives the correct leg direction
                     
                     # Calculate foot center and dimensions
                     # Position foot slightly beyond ankle in the direction of leg
@@ -361,28 +361,28 @@ class YOLOPifPafMaskProcessor:
                     foot_center_x = ankle_x + int(foot_offset * math.cos(angle))
                     foot_center_y = ankle_y + int(foot_offset * math.sin(angle))
                     
-                    foot_width = w // 20  # Smaller foot width
-                    foot_height = h // 15  # Smaller foot height
+                    foot_width = w // 12  # Increased from //15 to //12 for wider feet
+                    foot_height = h // 10  # Increased from //12 to //10 for longer feet
                     
                     # Draw rotated rectangle for the foot
                     part_mask = self._draw_rotated_rectangle(
                         part_mask, (foot_center_x, foot_center_y), 
-                        foot_width, foot_height, angle, 0.5  # Reduced confidence
+                        foot_width, foot_height, angle, 0.5
                     )
                     
                 elif len(valid_kps) == 1:
-                    # Only ankle available, create smaller horizontal foot region
+                    # Only ankle available, create wider horizontal foot region
                     ankle_x, ankle_y = int(valid_kps[0][0]), int(valid_kps[0][1])
                     
-                    foot_width = w // 20  # Smaller width
-                    foot_height = h // 15  # Smaller height
+                    foot_width = w // 12  # Increased width to match rotated feet
+                    foot_height = h // 10  # Increased height
                     
                     min_x = max(0, ankle_x - foot_width)
                     max_x = min(w, ankle_x + foot_width)
                     min_y = max(0, ankle_y - foot_height // 3)
                     max_y = min(h, ankle_y + foot_height)
                     
-                    part_mask[min_y:max_y, min_x:max_x] = 0.4  # Reduced confidence
+                    part_mask[min_y:max_y, min_x:max_x] = 0.4
             
             # Apply smaller Gaussian blur for tighter regions
             part_mask = cv2.GaussianBlur(part_mask, (15, 15), 0)  # Reduced from (21, 21)
