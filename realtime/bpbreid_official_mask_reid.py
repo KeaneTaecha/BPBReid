@@ -676,7 +676,7 @@ def main():
     
     # Configuration
     REID_MODEL_PATH = "pretrained_models/bpbreid_market1501_hrnet32_10642.pth"
-    HRNET_PATH = "pretrained_models/hrnet32_imagenet.pth"
+    HRNET_PATH = "pretrained_models/hrnetv2_w32_imagenet_pretrained.pth"
     YOLO_MODEL = "yolov8n.pt"
     GALLERY_PATH = "datasets/Compare/dataset-2/person-1.jpg"
     VIDEO_PATH = "datasets/Compare/dataset-2/person-1-vid.MOV"
