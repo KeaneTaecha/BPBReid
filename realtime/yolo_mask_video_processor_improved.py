@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-YOLO-based Video Processor with OpenPifPaf Masking
+YOLO-based Video Processor with OpenPifPaf Masking - Improved Version
 
 This script processes video to:
 1. Detect persons using YOLO
-2. Generate pose-based masks using OpenPifPaf (similar to official get_labels.py approach)
+2. Generate pose-based masks using OpenPifPaf with smaller keypoints and rotated leg/foot rectangles
 3. Show the masking visualization
 
 Uses available dependencies: OpenCV, Ultralytics YOLO, OpenPifPaf, PyTorch
@@ -23,6 +23,7 @@ from PIL import Image
 import torch.nn.functional as F
 from typing import List, Tuple
 import openpifpaf
+import math
 
 # Add the parent directory to sys.path to import torchreid modules
 sys.path.append(str(Path(__file__).parent.parent))
@@ -30,7 +31,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 class YOLOPifPafMaskProcessor:
     """
     Video processor that uses YOLO for person detection and OpenPifPaf 
-    for pose-based masking (similar to the official BPBreID approach)
+    for pose-based masking with improved leg/foot rotation
     """
     
     def __init__(self, yolo_model_path='yolov8n.pt', pifpaf_model='shufflenetv2k16'):
@@ -50,7 +51,7 @@ class YOLOPifPafMaskProcessor:
         print("Loading YOLO model...")
         self.yolo = YOLO(yolo_model_path)
         
-        # Initialize OpenPifPaf for pose estimation (similar to get_labels.py approach)
+        # Initialize OpenPifPaf for pose estimation
         print("Loading OpenPifPaf model for pose-based masking...")
         try:
             self.pifpaf_predictor = openpifpaf.Predictor(
@@ -106,16 +107,14 @@ class YOLOPifPafMaskProcessor:
     
     def create_pifpaf_mask(self, frame: np.ndarray, bbox: Tuple[int, int, int, int]) -> Tuple[np.ndarray, List[np.ndarray]]:
         """
-        Create pose-based confidence fields using OpenPifPaf (following get_labels.py approach)
+        Create pose-based confidence fields using OpenPifPaf with improved leg/foot rotation
         
         Args:
             frame: Input frame
             bbox: YOLO bounding box for cropping
             
         Returns:
-            Tuple of (combined_mask, individual_part_masks) where:
-            - combined_mask: Single mask for visualization
-            - individual_part_masks: List of 5 body part confidence fields
+            Tuple of (combined_mask, individual_part_masks)
         """
         if not self.pifpaf_available:
             simple_mask = self.create_yolo_mask(frame, bbox)
@@ -151,7 +150,7 @@ class YOLOPifPafMaskProcessor:
             pose = predictions[0]
             keypoints = pose.data  # Shape: [17, 3] - (x, y, confidence) for each keypoint
             
-            # Create 5-part confidence fields following the BPBreID approach
+            # Create confidence fields with improved leg/foot rotation
             part_masks, combined_mask = self._create_confidence_fields(person_crop, keypoints)
             
             # Create full-frame masks
@@ -182,30 +181,75 @@ class YOLOPifPafMaskProcessor:
             simple_mask = self.create_yolo_mask(frame, bbox)
             return simple_mask, [simple_mask]
     
+    def _draw_rotated_rectangle(self, mask: np.ndarray, center: Tuple[int, int], 
+                               width: int, height: int, angle: float, confidence: float) -> np.ndarray:
+        """
+        Draw a rotated rectangle on the mask
+        
+        Args:
+            mask: Mask to draw on
+            center: Center point (x, y)
+            width: Rectangle width
+            height: Rectangle height
+            angle: Rotation angle in radians
+            confidence: Confidence value to fill with
+            
+        Returns:
+            Updated mask
+        """
+        h, w = mask.shape
+        center_x, center_y = center
+        
+        # Create rotation matrix
+        cos_angle = math.cos(angle)
+        sin_angle = math.sin(angle)
+        
+        # Calculate rotated rectangle corners
+        half_w = width / 2
+        half_h = height / 2
+        
+        corners = [
+            (-half_w, -half_h),
+            (half_w, -half_h),
+            (half_w, half_h),
+            (-half_w, half_h)
+        ]
+        
+        # Rotate and translate corners
+        rotated_corners = []
+        for corner_x, corner_y in corners:
+            rot_x = corner_x * cos_angle - corner_y * sin_angle + center_x
+            rot_y = corner_x * sin_angle + corner_y * cos_angle + center_y
+            rotated_corners.append((int(rot_x), int(rot_y)))
+        
+        # Draw filled polygon
+        pts = np.array(rotated_corners, np.int32)
+        cv2.fillPoly(mask, [pts], confidence)
+        
+        return mask
+    
     def _create_confidence_fields(self, image: np.ndarray, keypoints: np.ndarray) -> Tuple[List[np.ndarray], np.ndarray]:
         """
-        Create 7-part confidence fields from keypoints (modified for individual legs and feet)
+        Create 7-part confidence fields with smaller keypoints and rotated leg/foot rectangles
         
         Args:
             image: Cropped person image
             keypoints: OpenPifPaf keypoints [17, 3] (x, y, confidence)
             
         Returns:
-            Tuple of (part_masks_list, combined_mask) where:
-            - part_masks_list: List of 7 confidence field arrays for each body part
-            - combined_mask: Combined mask for general visualization
+            Tuple of (part_masks_list, combined_mask)
         """
         h, w = image.shape[:2]
         
-        # Define 7-part body segmentation with individual legs and feet
+        # Define 7-part body segmentation
         part_definitions = {
             'head': [0, 1, 2, 3, 4],  # nose, eyes, ears
             'upper_torso_arms': [5, 6, 7, 8],  # shoulders, elbows
             'lower_torso_arms': [9, 10, 11, 12],  # wrists, hips
             'left_leg': [11, 13],  # left hip, left knee
             'right_leg': [12, 14],  # right hip, right knee
-            'left_foot': [15],  # left ankle
-            'right_foot': [16]  # right ankle
+            'left_foot': [13, 15],  # left knee, left ankle
+            'right_foot': [14, 16]  # right knee, right ankle
         }
         
         part_names = list(part_definitions.keys())
@@ -218,137 +262,133 @@ class YOLOPifPafMaskProcessor:
             # Get valid keypoints for this part
             valid_kps = []
             for idx in keypoint_indices:
-                if idx < len(keypoints) and keypoints[idx, 2] > 0.2:  # Lower confidence threshold
+                if idx < len(keypoints) and keypoints[idx, 2] > 0.15:  # Lower confidence threshold
                     valid_kps.append(keypoints[idx])
             
             if len(valid_kps) == 0:
                 part_masks.append(part_mask)
                 continue
             
-            # Create body part regions
+            # Create body part regions with smaller sizes
             if part_name == 'head':
-                # Create large circular head region
+                # Create smaller circular head region
                 if len(valid_kps) >= 1:
                     center_x = int(sum(kp[0] for kp in valid_kps) / len(valid_kps))
                     center_y = int(sum(kp[1] for kp in valid_kps) / len(valid_kps))
                     
-                    # Large radius for head coverage
-                    radius = min(h, w) // 6  # Much larger radius
+                    # Smaller radius for head coverage
+                    radius = min(h, w) // 10  # Reduced from //6 to //10
                     
                     y_grid, x_grid = np.ogrid[:h, :w]
                     dist_sq = (x_grid - center_x) ** 2 + (y_grid - center_y) ** 2
                     part_mask = np.exp(-dist_sq / (2 * radius ** 2))
                     
             elif part_name in ['upper_torso_arms', 'lower_torso_arms']:
-                # Create large rectangular torso/arms regions
+                # Create smaller rectangular torso/arms regions
                 if len(valid_kps) >= 2:
                     x_coords = [kp[0] for kp in valid_kps]
                     y_coords = [kp[1] for kp in valid_kps]
                     
-                    # Create large bounding box with padding
-                    min_x = max(0, int(min(x_coords)) - w // 8)
-                    max_x = min(w, int(max(x_coords)) + w // 8)
-                    min_y = max(0, int(min(y_coords)) - h // 10)
-                    max_y = min(h, int(max(y_coords)) + h // 10)
+                    # Create smaller bounding box with less padding
+                    min_x = max(0, int(min(x_coords)) - w // 12)  # Reduced from //8 to //12
+                    max_x = min(w, int(max(x_coords)) + w // 12)
+                    min_y = max(0, int(min(y_coords)) - h // 15)  # Reduced from //10 to //15
+                    max_y = min(h, int(max(y_coords)) + h // 15)
                     
-                    # Fill the entire region with high confidence
-                    part_mask[min_y:max_y, min_x:max_x] = 0.8
+                    # Fill the region with confidence
+                    part_mask[min_y:max_y, min_x:max_x] = 0.7  # Reduced from 0.8 to 0.7
                     
-                    # Add smooth falloff from center
+                    # Add smaller smooth falloff from center
                     center_x = (min_x + max_x) // 2
                     center_y = (min_y + max_y) // 2
                     y_grid, x_grid = np.ogrid[:h, :w]
                     dist_sq = (x_grid - center_x) ** 2 + (y_grid - center_y) ** 2
-                    gaussian = np.exp(-dist_sq / (2 * (min(h, w) // 4) ** 2))
-                    part_mask = np.maximum(part_mask, gaussian * 0.6)
+                    gaussian = np.exp(-dist_sq / (2 * (min(h, w) // 6) ** 2))  # Reduced from //4 to //6
+                    part_mask = np.maximum(part_mask, gaussian * 0.5)  # Reduced from 0.6 to 0.5
                     
             elif part_name in ['left_leg', 'right_leg']:
-                # Create individual vertical leg regions
-                if len(valid_kps) >= 1:
-                    # For single keypoint (knee only), estimate leg region
-                    if len(valid_kps) == 1:
-                        knee_x, knee_y = int(valid_kps[0][0]), int(valid_kps[0][1])
-                        
-                        # Estimate leg width and height based on image size
-                        leg_width = w // 12  # Narrower than combined legs
-                        leg_height = h // 3  # Height from knee down
-                        
-                        # Create rectangular region for individual leg
-                        min_x = max(0, knee_x - leg_width)
-                        max_x = min(w, knee_x + leg_width)
-                        min_y = max(0, knee_y - leg_height // 4)  # Small portion above knee
-                        max_y = min(h, knee_y + leg_height)  # Extend down from knee
-                        
-                        # Fill the leg region
-                        part_mask[min_y:max_y, min_x:max_x] = 0.7
-                        
-                        # Add smooth falloff
-                        center_x = knee_x
-                        center_y = knee_y + leg_height // 3  # Center slightly below knee
-                        y_grid, x_grid = np.ogrid[:h, :w]
-                        dist_sq = (x_grid - center_x) ** 2 + (y_grid - center_y) ** 2
-                        gaussian = np.exp(-dist_sq / (2 * (leg_width * 1.5) ** 2))
-                        part_mask = np.maximum(part_mask, gaussian * 0.5)
+                # Create rotated leg rectangles aligned with leg direction
+                if len(valid_kps) >= 2:
+                    # Get hip and knee positions
+                    hip_x, hip_y = int(valid_kps[0][0]), int(valid_kps[0][1])
+                    knee_x, knee_y = int(valid_kps[1][0]), int(valid_kps[1][1])
                     
-                    else:
-                        # Multiple keypoints available (hip and knee)
-                        x_coords = [kp[0] for kp in valid_kps]
-                        y_coords = [kp[1] for kp in valid_kps]
-                        
-                        # Create vertical leg region
-                        center_x = int(sum(x_coords) / len(x_coords))
-                        min_y = max(0, int(min(y_coords)) - h // 20)
-                        max_y = min(h, int(max(y_coords)) + h // 8)
-                        
-                        leg_width = w // 12
-                        min_x = max(0, center_x - leg_width)
-                        max_x = min(w, center_x + leg_width)
-                        
-                        # Fill the leg region
-                        part_mask[min_y:max_y, min_x:max_x] = 0.7
-                        
-                        # Add smooth falloff
-                        center_y = (min_y + max_y) // 2
-                        y_grid, x_grid = np.ogrid[:h, :w]
-                        dist_sq = (x_grid - center_x) ** 2 + (y_grid - center_y) ** 2
-                        gaussian = np.exp(-dist_sq / (2 * (leg_width * 1.5) ** 2))
-                        part_mask = np.maximum(part_mask, gaussian * 0.5)
+                    # Calculate leg angle
+                    dx = knee_x - hip_x
+                    dy = knee_y - hip_y
+                    angle = math.atan2(dy, dx)
+                    
+                    # Calculate leg center and dimensions
+                    center_x = (hip_x + knee_x) // 2
+                    center_y = (hip_y + knee_y) // 2
+                    leg_length = int(math.sqrt(dx*dx + dy*dy)) + h // 8  # Add some padding
+                    leg_width = w // 18  # Reduced from //12 to //18 for smaller legs
+                    
+                    # Draw rotated rectangle for the leg
+                    part_mask = self._draw_rotated_rectangle(
+                        part_mask, (center_x, center_y), 
+                        leg_width, leg_length, angle, 0.6  # Reduced confidence
+                    )
+                    
+                elif len(valid_kps) == 1:
+                    # Only one keypoint (hip or knee), create smaller vertical region
+                    kp_x, kp_y = int(valid_kps[0][0]), int(valid_kps[0][1])
+                    leg_width = w // 18  # Smaller width
+                    leg_height = h // 4  # Smaller height
+                    
+                    min_x = max(0, kp_x - leg_width)
+                    max_x = min(w, kp_x + leg_width)
+                    min_y = max(0, kp_y - leg_height // 4)
+                    max_y = min(h, kp_y + leg_height)
+                    
+                    part_mask[min_y:max_y, min_x:max_x] = 0.5  # Reduced confidence
                         
             elif part_name in ['left_foot', 'right_foot']:
-                # Create individual rectangular foot regions
-                if len(valid_kps) >= 1:
+                # Create rotated foot rectangles aligned with lower leg direction
+                if len(valid_kps) >= 2:
+                    # Get knee and ankle positions
+                    knee_x, knee_y = int(valid_kps[0][0]), int(valid_kps[0][1])
+                    ankle_x, ankle_y = int(valid_kps[1][0]), int(valid_kps[1][1])
+                    
+                    # Calculate lower leg angle
+                    dx = ankle_x - knee_x
+                    dy = ankle_y - knee_y
+                    angle = math.atan2(dy, dx)
+                    
+                    # Calculate foot center and dimensions
+                    # Position foot slightly beyond ankle in the direction of leg
+                    foot_offset = h // 20  # Small offset beyond ankle
+                    foot_center_x = ankle_x + int(foot_offset * math.cos(angle))
+                    foot_center_y = ankle_y + int(foot_offset * math.sin(angle))
+                    
+                    foot_width = w // 20  # Smaller foot width
+                    foot_height = h // 15  # Smaller foot height
+                    
+                    # Draw rotated rectangle for the foot
+                    part_mask = self._draw_rotated_rectangle(
+                        part_mask, (foot_center_x, foot_center_y), 
+                        foot_width, foot_height, angle, 0.5  # Reduced confidence
+                    )
+                    
+                elif len(valid_kps) == 1:
+                    # Only ankle available, create smaller horizontal foot region
                     ankle_x, ankle_y = int(valid_kps[0][0]), int(valid_kps[0][1])
                     
-                    # Foot dimensions
-                    foot_width = w // 15  # Individual foot width
-                    foot_height = h // 12  # Foot height
+                    foot_width = w // 20  # Smaller width
+                    foot_height = h // 15  # Smaller height
                     
-                    # Create rectangular region for individual foot
                     min_x = max(0, ankle_x - foot_width)
                     max_x = min(w, ankle_x + foot_width)
-                    min_y = max(0, ankle_y - foot_height // 3)  # Small portion above ankle
-                    max_y = min(h, ankle_y + foot_height)  # Extend down from ankle
+                    min_y = max(0, ankle_y - foot_height // 3)
+                    max_y = min(h, ankle_y + foot_height)
                     
-                    # Fill the foot region with rectangular shape
-                    part_mask[min_y:max_y, min_x:max_x] = 0.6
-                    
-                    # Add smooth falloff with rectangular bias
-                    center_x = ankle_x
-                    center_y = ankle_y + foot_height // 3  # Center slightly below ankle
-                    
-                    # Create elliptical falloff (wider horizontally for foot shape)
-                    y_grid, x_grid = np.ogrid[:h, :w]
-                    x_dist_sq = (x_grid - center_x) ** 2 / (foot_width * 1.2) ** 2
-                    y_dist_sq = (y_grid - center_y) ** 2 / (foot_height * 0.8) ** 2
-                    elliptical_dist = x_dist_sq + y_dist_sq
-                    gaussian = np.exp(-elliptical_dist / 2)
-                    part_mask = np.maximum(part_mask, gaussian * 0.4)
+                    part_mask[min_y:max_y, min_x:max_x] = 0.4  # Reduced confidence
             
-            # Apply Gaussian blur to create smooth, large areas
-            part_mask = cv2.GaussianBlur(part_mask, (21, 21), 0)  # Slightly smaller blur for individual parts
+            # Apply smaller Gaussian blur for tighter regions
+            part_mask = cv2.GaussianBlur(part_mask, (15, 15), 0)  # Reduced from (21, 21)
             
             # Ensure minimum confidence for visibility
-            part_mask = np.maximum(part_mask, 0.05)
+            part_mask = np.maximum(part_mask, 0.02)  # Reduced from 0.05
             
             part_masks.append(part_mask)
         
@@ -358,60 +398,6 @@ class YOLOPifPafMaskProcessor:
             combined_mask = np.maximum(combined_mask, part_mask)
         
         return part_masks, combined_mask
-    
-    def _connect_keypoints_in_part(self, part_mask: np.ndarray, keypoints_in_part: List, part_name: str, h: int, w: int) -> np.ndarray:
-        """
-        Connect keypoints within a body part to create continuous confidence regions
-        
-        Args:
-            part_mask: Current part mask
-            keypoints_in_part: List of keypoints for this part
-            part_name: Name of the body part
-            h, w: Image dimensions
-            
-        Returns:
-            Updated part mask with connections
-        """
-        # Define connections within each part
-        part_connections = {
-            'head': [(0, 1), (0, 2), (1, 3), (2, 4)],  # Connect facial features
-            'upper_torso_arms': [(0, 1), (0, 2), (1, 3)],  # Connect shoulders to elbows
-            'lower_torso_arms': [(0, 1), (2, 3)],  # Connect wrists, connect hips
-            'legs': [(0, 1)],  # Connect knees
-            'feet': [(0, 1)]  # Connect ankles
-        }
-        
-        if part_name not in part_connections:
-            return part_mask
-        
-        connections = part_connections[part_name]
-        
-        # Draw connections between keypoints
-        for start_idx, end_idx in connections:
-            if start_idx < len(keypoints_in_part) and end_idx < len(keypoints_in_part):
-                start_kp = keypoints_in_part[start_idx]
-                end_kp = keypoints_in_part[end_idx]
-                
-                start_pt = (int(start_kp[0]), int(start_kp[1]))
-                end_pt = (int(end_kp[0]), int(end_kp[1]))
-                
-                # Calculate line thickness based on part type and image size
-                if part_name in ['upper_torso_arms', 'lower_torso_arms']:
-                    thickness = max(15, int(min(h, w) * 0.08))  # Thick for torso
-                else:
-                    thickness = max(10, int(min(h, w) * 0.05))  # Thinner for other parts
-                
-                # Use average confidence of connected keypoints
-                avg_conf = (start_kp[2] + end_kp[2]) / 2
-                
-                # Create a temporary mask for the line
-                line_mask = np.zeros((h, w), dtype=np.float32)
-                cv2.line(line_mask, start_pt, end_pt, avg_conf, thickness)
-                
-                # Add to part mask
-                part_mask = np.maximum(part_mask, line_mask)
-        
-        return part_mask
     
     def visualize_mask(self, frame: np.ndarray, combined_mask: np.ndarray, part_masks: List[np.ndarray],
                     bbox: Tuple[int, int, int, int, float], person_id: int) -> np.ndarray:
@@ -431,7 +417,7 @@ class YOLOPifPafMaskProcessor:
         # Create visualization
         vis_frame = frame.copy()
         
-        # Define colors for each body part (BGR format) - Updated for 7 parts
+        # Define colors for each body part (BGR format)
         part_colors = [
             (255, 0, 0),      # Head - Pure Blue
             (0, 255, 0),      # Upper Torso/Arms - Pure Green
@@ -450,19 +436,19 @@ class YOLOPifPafMaskProcessor:
         # Check if we have any visible masks
         has_visible_masks = any(part_mask.max() > 0.01 for part_mask in part_masks)
         
-        # Simple, highly visible mask application
+        # Apply masks with bright colors
         if has_visible_masks and len(part_masks) > 1:
             # Apply each part mask with solid bright colors
             for i, (part_mask, color, name) in enumerate(zip(part_masks, part_colors, part_names)):
-                if part_mask.max() > 0.1:  # Process masks with reasonable confidence
+                if part_mask.max() > 0.05:  # Lower threshold for better coverage
                     # Create binary mask with lower threshold for better coverage
-                    binary_mask = (part_mask > 0.15).astype(np.uint8)  # Slightly higher threshold for cleaner separation
+                    binary_mask = (part_mask > 0.1).astype(np.uint8)  # Lower threshold
                     # Apply solid color where mask is present
                     mask_colored[binary_mask > 0] = color
         else:
             # Fallback: use combined mask with bright green
-            if combined_mask.max() > 0.1:
-                binary_combined = (combined_mask > 0.2).astype(np.uint8)
+            if combined_mask.max() > 0.05:
+                binary_combined = (combined_mask > 0.1).astype(np.uint8)
                 mask_colored[binary_combined > 0] = (0, 255, 0)  # Bright green
             else:
                 # Last resort: rectangular mask for visibility testing
@@ -470,7 +456,7 @@ class YOLOPifPafMaskProcessor:
                 cv2.rectangle(mask_colored, (x1, y1), (x2, y2), (0, 255, 0), -1)
         
         # Strong blend for maximum visibility
-        alpha = 0.7  # High alpha for strong mask visibility
+        alpha = 0.6  # Slightly reduced alpha for better balance
         vis_frame = cv2.addWeighted(vis_frame, 1-alpha, mask_colored, alpha, 0)
         
         # Draw bounding box
@@ -523,7 +509,7 @@ class YOLOPifPafMaskProcessor:
         # Setup video writer if saving
         if save_video:
             if output_path is None:
-                output_path = video_path.replace('.MOV', '_pose_masked.mp4').replace('.mp4', '_pose_masked.mp4')
+                output_path = video_path.replace('.MOV', '_pose_masked_improved.mp4').replace('.mp4', '_pose_masked_improved.mp4')
             
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
@@ -558,7 +544,7 @@ class YOLOPifPafMaskProcessor:
                         # Create mask using pose-based method
                         if self.pifpaf_available:
                             combined_mask, part_masks = self.create_pifpaf_mask(frame, bbox)
-                            mask_type = "PifPaf Confidence Fields"
+                            mask_type = "PifPaf Improved (Rotated Legs)"
                         else:
                             combined_mask = self.create_yolo_mask(frame, bbox)
                             part_masks = [combined_mask]
@@ -578,7 +564,7 @@ class YOLOPifPafMaskProcessor:
                     
                     # Show preview if requested
                     if show_preview:
-                        cv2.imshow('YOLO + PifPaf Person Masking', vis_frame)
+                        cv2.imshow('YOLO + PifPaf Person Masking (Improved)', vis_frame)
                     
                     # Progress update
                     if frame_count % 30 == 0:
@@ -653,13 +639,13 @@ def main():
     
     try:
         # Create processor
-        print("Initializing YOLO + PifPaf Person Mask Processor...")
+        print("Initializing YOLO + PifPaf Person Mask Processor (Improved)...")
         processor = YOLOPifPafMaskProcessor(yolo_model_path=YOLO_MODEL)
         
         # Get just the filename without path
         video_filename = os.path.basename(VIDEO_PATH)
         # Create output path in current directory
-        output_path = video_filename.replace('.MOV', '_yolo_pifpaf_masked.mp4').replace('.mp4', '_yolo_pifpaf_masked.mp4')
+        output_path = video_filename.replace('.MOV', '_yolo_pifpaf_improved.mp4').replace('.mp4', '_yolo_pifpaf_improved.mp4')
 
         processor.process_video(
             video_path=VIDEO_PATH,
