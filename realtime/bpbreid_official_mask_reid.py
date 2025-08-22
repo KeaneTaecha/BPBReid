@@ -216,7 +216,7 @@ class BPBreIDOfficialMaskReID:
         
         return detections
     
-    def create_official_mask(self, frame: np.ndarray, bbox: Tuple[int, int, int, int]) -> Optional[np.ndarray]:
+    def create_official_mask(self, frame: np.ndarray, bbox: Tuple[int, int, int, int]) -> Optional[torch.Tensor]:
         """
         Create official BPBreID mask using MaskRCNN + PifPaf transforms
         
@@ -225,10 +225,10 @@ class BPBreIDOfficialMaskReID:
             bbox: YOLO bounding box (x1, y1, x2, y2)
             
         Returns:
-            Official BPBreID mask tensor [5+1, H, W] or None if failed
+            Official BPBreID mask tensor [6, H, W] (background + 5 parts) or None if failed
         """
         if not self.mask_available:
-            return self._create_simple_mask(frame, bbox)
+            return self._create_simple_mask_tensor()
         
         try:
             x1, y1, x2, y2 = bbox
@@ -236,12 +236,12 @@ class BPBreIDOfficialMaskReID:
             # Crop the person region
             person_crop = frame[y1:y2, x1:x2]
             if person_crop.size == 0:
-                return self._create_simple_mask(frame, bbox)
+                return self._create_simple_mask_tensor()
             
             # Create MaskRCNN mask
             mask = self._create_maskrcnn_mask(person_crop)
             if mask is None:
-                return self._create_simple_mask(frame, bbox)
+                return self._create_simple_mask_tensor()
             
             # Apply official BPBreID mask transforms
             official_mask = self._apply_official_mask_transforms(mask, person_crop.shape)
@@ -250,7 +250,7 @@ class BPBreIDOfficialMaskReID:
             
         except Exception as e:
             print(f"Official mask processing failed: {e}")
-            return self._create_simple_mask(frame, bbox)
+            return self._create_simple_mask_tensor()
     
     def _create_maskrcnn_mask(self, person_crop: np.ndarray) -> Optional[np.ndarray]:
         """Create MaskRCNN mask for person crop"""
@@ -305,12 +305,12 @@ class BPBreIDOfficialMaskReID:
             Official BPBreID mask tensor [6, H, W] (background + 5 parts)
         """
         try:
-            # Convert to tensor and add batch dimension
-            mask_tensor = torch.from_numpy(mask).unsqueeze(0)  # [1, H, W]
+            # Convert to tensor
+            mask_tensor = torch.from_numpy(mask).float()  # [H, W]
             
             # Create simulated PifPaf confidence fields (since we don't have real PifPaf)
             # This simulates the 36 PifPaf confidence fields (17 keypoints + 19 connections)
-            h, w = mask_tensor.shape[1:]
+            h, w = mask_tensor.shape
             pifpaf_fields = torch.zeros(36, h, w)
             
             # Use the mask to create realistic PifPaf-like confidence fields
@@ -318,23 +318,29 @@ class BPBreIDOfficialMaskReID:
             for i in range(36):
                 # Create different patterns for different body parts
                 if i < 17:  # Keypoints
-                    # Head keypoints (0-4)
+                    # Head keypoints (0-4) - upper part of person
                     if i < 5:
-                        pifpaf_fields[i] = mask_tensor[0] * (0.8 + 0.2 * torch.rand_like(mask_tensor[0]))
-                    # Shoulder keypoints (5-6)
+                        head_region = mask_tensor[:h//5, :]
+                        pifpaf_fields[i] = head_region * (0.8 + 0.2 * torch.rand_like(head_region))
+                    # Shoulder keypoints (5-6) - upper-middle part
                     elif i < 7:
-                        pifpaf_fields[i] = mask_tensor[0] * (0.7 + 0.3 * torch.rand_like(mask_tensor[0]))
-                    # Arm keypoints (7-10)
+                        shoulder_region = mask_tensor[h//5:h//3, :]
+                        pifpaf_fields[i] = shoulder_region * (0.7 + 0.3 * torch.rand_like(shoulder_region))
+                    # Arm keypoints (7-10) - middle part
                     elif i < 11:
-                        pifpaf_fields[i] = mask_tensor[0] * (0.6 + 0.4 * torch.rand_like(mask_tensor[0]))
-                    # Hip keypoints (11-12)
+                        arm_region = mask_tensor[h//3:h//2, :]
+                        pifpaf_fields[i] = arm_region * (0.6 + 0.4 * torch.rand_like(arm_region))
+                    # Hip keypoints (11-12) - lower-middle part
                     elif i < 13:
-                        pifpaf_fields[i] = mask_tensor[0] * (0.7 + 0.3 * torch.rand_like(mask_tensor[0]))
-                    # Leg keypoints (13-16)
+                        hip_region = mask_tensor[h//2:2*h//3, :]
+                        pifpaf_fields[i] = hip_region * (0.7 + 0.3 * torch.rand_like(hip_region))
+                    # Leg keypoints (13-16) - lower part
                     else:
-                        pifpaf_fields[i] = mask_tensor[0] * (0.6 + 0.4 * torch.rand_like(mask_tensor[0]))
+                        leg_region = mask_tensor[2*h//3:, :]
+                        pifpaf_fields[i] = leg_region * (0.6 + 0.4 * torch.rand_like(leg_region))
                 else:  # Connections
-                    pifpaf_fields[i] = mask_tensor[0] * (0.5 + 0.5 * torch.rand_like(mask_tensor[0]))
+                    # Use full person mask for connections
+                    pifpaf_fields[i] = mask_tensor * (0.5 + 0.5 * torch.rand_like(mask_tensor))
             
             # Apply official transforms
             # 1. Group into 5 vertical parts
@@ -353,14 +359,14 @@ class BPBreIDOfficialMaskReID:
             
         except Exception as e:
             print(f"Official mask transforms failed: {e}")
+            import traceback
+            traceback.print_exc()
             return self._create_simple_mask_tensor()
     
-    def _create_simple_mask(self, frame: np.ndarray, bbox: Tuple[int, int, int, int]) -> torch.Tensor:
-        """Create simple mask as fallback"""
-        return self._create_simple_mask_tensor()
+
     
     def _create_simple_mask_tensor(self) -> torch.Tensor:
-        """Create simple 5-part vertical mask tensor"""
+        """Create simple 5-part vertical mask tensor in the correct format for BPBreID"""
         # Create simple 5-part vertical division
         h, w = 96, 32  # Feature map size (384/4, 128/4)
         masks = torch.zeros(6, h, w)  # Background + 5 parts
@@ -375,6 +381,11 @@ class BPBreIDOfficialMaskReID:
         
         # Background mask (complement of all parts)
         masks[0] = 1.0 - masks[1:].max(dim=0)[0]
+        
+        # Normalize masks to sum to 1 at each pixel
+        mask_sum = masks.sum(dim=0, keepdim=True)
+        mask_sum = torch.where(mask_sum > 0, mask_sum, torch.ones_like(mask_sum))
+        masks = masks / mask_sum
         
         return masks.to(self.device)
     
@@ -411,6 +422,8 @@ class BPBreIDOfficialMaskReID:
             
         except Exception as e:
             print(f"Error loading gallery person: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def extract_person_features(self, frame: np.ndarray, bbox: Tuple[int, int, int, int]) -> Optional[torch.Tensor]:
@@ -449,6 +462,8 @@ class BPBreIDOfficialMaskReID:
             
         except Exception as e:
             print(f"Error extracting person features: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def compute_similarity(self, person_features: torch.Tensor) -> float:
