@@ -118,18 +118,12 @@ class BPBreIDOfficialMaskReID:
         config.model.bpbreid.mask_filtering_testing = True  # Enable mask filtering
         config.model.bpbreid.mask_filtering_training = False
         config.model.bpbreid.test_embeddings = ['bn_foreg', 'parts']  # Use both foreground and parts
-        config.model.bpbreid.test_use_target_segmentation = 'soft'  # Use soft masking
-        config.model.bpbreid.testing_binary_visibility_score = False  # Use continuous scores
-        config.model.bpbreid.training_binary_visibility_score = False
+        config.model.bpbreid.test_use_target_segmentation = 'none'  # Don't use external masks for soft masking
         
-        # Mask configuration
+        # Mask configuration (matching official config)
         config.model.bpbreid.masks = SimpleNamespace()
         config.model.bpbreid.masks.dir = 'pifpaf_maskrcnn_filtering'
         config.model.bpbreid.masks.preprocess = 'five_v'  # 5-part vertical segmentation
-        config.model.bpbreid.masks.parts_num = 5
-        config.model.bpbreid.masks.softmax_weight = 15.0  # Official softmax weighting
-        config.model.bpbreid.masks.background_computation_strategy = 'threshold'
-        config.model.bpbreid.masks.mask_filtering_threshold = 0.5
         
         # Model architecture settings
         config.model.bpbreid.dim_reduce = 'after_pooling'
