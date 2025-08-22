@@ -124,6 +124,10 @@ class BPBreIDOfficialMaskReID:
         config.model.bpbreid.masks = SimpleNamespace()
         config.model.bpbreid.masks.dir = 'pifpaf_maskrcnn_filtering'
         config.model.bpbreid.masks.preprocess = 'five_v'  # 5-part vertical segmentation
+        config.model.bpbreid.masks.parts_num = 5  # Number of body parts
+        config.model.bpbreid.masks.softmax_weight = 15.0  # Softmax weighting for mask normalization
+        config.model.bpbreid.masks.background_computation_strategy = 'threshold'  # Background computation method
+        config.model.bpbreid.masks.mask_filtering_threshold = 0.5  # Mask filtering threshold
         
         # Model architecture settings
         config.model.bpbreid.dim_reduce = 'after_pooling'
@@ -132,6 +136,8 @@ class BPBreIDOfficialMaskReID:
         config.model.bpbreid.normalization = 'identity'
         config.model.bpbreid.last_stride = 1
         config.model.bpbreid.shared_parts_id_classifier = False
+        config.model.bpbreid.horizontal_stripes = False  # Use learnable attention instead of horizontal stripes
+        config.model.bpbreid.after_pooling_dim_reduce = True  # Enable dimension reduction after pooling
         
         # Data configuration
         config.data = SimpleNamespace()
