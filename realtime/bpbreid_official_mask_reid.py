@@ -119,6 +119,8 @@ class BPBreIDOfficialMaskReID:
         config.model.bpbreid.mask_filtering_training = False
         config.model.bpbreid.test_embeddings = ['bn_foreg', 'parts']  # Use both foreground and parts
         config.model.bpbreid.test_use_target_segmentation = 'none'  # Don't use external masks for soft masking
+        config.model.bpbreid.testing_binary_visibility_score = False  # Use continuous visibility scores
+        config.model.bpbreid.training_binary_visibility_score = False  # Use continuous visibility scores during training
         
         # Mask configuration (matching official config)
         config.model.bpbreid.masks = SimpleNamespace()
