@@ -355,6 +355,9 @@ class BPBreIDOfficialMaskReID:
             # 4. Permute dimensions to match BPBreID expected format
             final_masks = self.permute_masks_transform.apply_to_mask(resized_masks)
             
+            # Add batch dimension: [1, K+1, H, W]
+            final_masks = final_masks.unsqueeze(0)
+            
             return final_masks.to(self.device)
             
         except Exception as e:
@@ -368,8 +371,9 @@ class BPBreIDOfficialMaskReID:
     def _create_simple_mask_tensor(self) -> torch.Tensor:
         """Create simple 5-part vertical mask tensor in the correct format for BPBreID"""
         # Create simple 5-part vertical division
-        h, w = 96, 32  # Feature map size (384/4, 128/4)
-        masks = torch.zeros(6, h, w)  # Background + 5 parts
+        # Use a reasonable mask size that will be interpolated to feature map size
+        h, w = 384, 128  # Original image size (will be interpolated to feature map size)
+        masks = torch.zeros(6, h, w)  # Background + 5 parts [K+1, H, W]
         
         part_height = h // 5
         for i in range(5):
@@ -386,6 +390,9 @@ class BPBreIDOfficialMaskReID:
         mask_sum = masks.sum(dim=0, keepdim=True)
         mask_sum = torch.where(mask_sum > 0, mask_sum, torch.ones_like(mask_sum))
         masks = masks / mask_sum
+        
+        # Add batch dimension: [1, K+1, H, W]
+        masks = masks.unsqueeze(0)
         
         return masks.to(self.device)
     
