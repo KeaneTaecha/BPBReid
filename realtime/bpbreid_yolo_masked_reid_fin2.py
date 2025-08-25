@@ -805,7 +805,7 @@ class ImprovedBPBreIDYOLOMaskedReID:
             # Count parts with significant coverage (>5%)
             visible_parts = sum(1 for w in part_weights if w > 5.0)
             # Adjust threshold: fewer parts = lower threshold
-            adaptive_threshold = self.reid_threshold * (visible_parts / 5.0) ** 0.8
+            adaptive_threshold = self.reid_threshold * (visible_parts / 5.0) ** 0.5
             # Ensure threshold doesn't go below 0.2 or above original threshold
             adaptive_threshold = max(0.15, min(adaptive_threshold, self.reid_threshold))
         else:
@@ -1392,7 +1392,7 @@ def main():
     YOLO_MODEL = "yolov8n-pose.pt"
     
     # Test dataset paths - you can switch between datasets
-    dataset = "dataset-2"  # Change to "dataset-1" to test the other dataset
+    dataset = "dataset-1"  # Change to "dataset-1" to test the other dataset
     
     if dataset == "dataset-2":
         GALLERY_PATH = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-2", "person-2.jpg")

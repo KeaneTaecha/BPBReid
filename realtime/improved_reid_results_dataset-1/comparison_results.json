@@ -1,0 +1,42 @@
+{
+  "timestamp": "2025-08-25T19:00:05.635143",
+  "gallery_path": "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets/Compare/dataset-1/gallery-person.jpg",
+  "reid_threshold": 0.45,
+  "masking_method": "YOLO Pose",
+  "video1_results": {
+    "timestamp": "2025-08-25T18:59:55.264872",
+    "video_path": "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets/Compare/dataset-1/correct.MOV",
+    "gallery_path": "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets/Compare/dataset-1/gallery-person.jpg",
+    "total_frames": 314,
+    "frames_with_detection": 11,
+    "frames_with_match": 11,
+    "frames_without_match": 0,
+    "similarity_scores": [
+      0.6215738654136658,
+      0.6260925531387329,
+      0.6450638175010681,
+      0.6402047872543335,
+      0.6354577541351318,
+      0.6579399704933167,
+      0.6270948052406311,
+      0.6469058394432068,
+      0.6231305003166199,
+      0.6124550104141235,
+      0.6277880668640137
+    ],
+    "reid_threshold": 0.45
+  },
+  "video2_results": {
+    "timestamp": "2025-08-25T19:00:04.170986",
+    "video_path": "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets/Compare/dataset-1/incorrect.MOV",
+    "gallery_path": "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets/Compare/dataset-1/gallery-person.jpg",
+    "total_frames": 307,
+    "frames_with_detection": 1,
+    "frames_with_match": 0,
+    "frames_without_match": 1,
+    "similarity_scores": [
+      0.3453609049320221
+    ],
+    "reid_threshold": 0.45
+  }
+}
