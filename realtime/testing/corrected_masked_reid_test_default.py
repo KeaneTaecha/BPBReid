@@ -752,8 +752,8 @@ def main():
     
     # Get parent directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    realtime_dir = os.path.dirname(current_dir)               
-    bpbreid_dir = os.path.dirname(realtime_dir) 
+    realtime_dir = os.path.dirname(current_dir)              
+    bpbreid_dir = os.path.dirname(realtime_dir)
     
     # Configuration - paths relative to parent directory
     reid_model_path = os.path.join(bpbreid_dir, "pretrained_models", "bpbreid_market1501_hrnet32_10642.pth")
