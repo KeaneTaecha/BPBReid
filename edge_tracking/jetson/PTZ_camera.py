@@ -40,9 +40,6 @@ class PTZCamera:
         # Initialize YOLO11 model
         self.person_tracker.initialize_model()
 
-        # Load gallery person if available
-        self.load_gallery_person()
-
         # Initialize action classifier
         self.action_classifier = ActionClassifier()
 
@@ -62,20 +59,6 @@ class PTZCamera:
         actual_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
         actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
         print(f"Camera initialized at {actual_width}x{actual_height} @ {actual_fps}fps")
-
-    def load_gallery_person(self):
-        """Load gallery person for BPBReid matching"""
-        # Define the path to your gallery image
-        gallery_path = "gallery_person.jpg"  # Adjust this path as needed
-        
-        if os.path.exists(gallery_path):
-            success = self.person_tracker.load_gallery_person(gallery_path)
-            if success:
-                print(f"Gallery person loaded successfully from {gallery_path}")
-            else:
-                print(f"Failed to load gallery person from {gallery_path}")
-        else:
-            print(f"Gallery image not found at {gallery_path}. BPBReid matching will be disabled.")
 
 
     def set_control(self, control_id, value):

@@ -73,7 +73,7 @@ class ImprovedBPBreIDYOLOMaskedReID:
         self.next_person_id = 1
         
         # ReID threshold (from corrected version)
-        self.reid_threshold = 0.45
+        self.reid_threshold = 0.46
         
         # Test results storage
         self.test_results = {
