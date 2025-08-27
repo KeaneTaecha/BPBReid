@@ -21,23 +21,38 @@ class BPBreIDReidentifier:
         
         # Load BPBreID model (simplified version)
         try:
+            print("Initializing BPBreID re-identifier...")
+            
             # Add the path to your BPBreID implementation
             bpbreid_path = str(Path(__file__).parent / "bpbreid_yolo_masked_reid_fin2.py")
             if bpbreid_path not in sys.path:
                 sys.path.append(str(Path(__file__).parent))
             
             # Import the necessary components
+            print("Importing BPBreID module...")
             from bpbreid_yolo_masked_reid_fin2 import ImprovedBPBreIDYOLOMaskedReID
             
             # Initialize the re-identifier
             reid_model_path = "../../pretrained_models/bpbreid_market1501_hrnet32_10642.pth"
             hrnet_path = "../../pretrained_models/hrnetv2_w32_imagenet_pretrained.pth"
             
+            print(f"Checking model paths...")
+            print(f"ReID model path: {reid_model_path} - Exists: {os.path.exists(reid_model_path)}")
+            print(f"HRNet path: {hrnet_path} - Exists: {os.path.exists(hrnet_path)}")
+            
+            if not os.path.exists(reid_model_path):
+                raise FileNotFoundError(f"BPBreID model not found: {reid_model_path}")
+            if not os.path.exists(hrnet_path):
+                raise FileNotFoundError(f"HRNet model not found: {hrnet_path}")
+            
+            print("Creating BPBreID model instance...")
             self.reidentifier = ImprovedBPBreIDYOLOMaskedReID(
                 reid_model_path=reid_model_path,
                 hrnet_path=hrnet_path,
                 yolo_model_path='yolov8n-pose.pt'
             )
+            
+            print("BPBreID model initialized successfully")
             
             # Setup transforms
             self.transform = transforms.Compose([
@@ -49,6 +64,8 @@ class BPBreIDReidentifier:
             
         except Exception as e:
             print(f"Error initializing BPBreID: {e}")
+            import traceback
+            traceback.print_exc()
             self.reidentifier = None
         
         # Gallery storage
@@ -60,41 +77,66 @@ class BPBreIDReidentifier:
         self.gallery_features = []
         self.gallery_images = []
         
+        # Create gallery folder if it doesn't exist
         if not os.path.exists(gallery_folder):
             print(f"Gallery folder not found: {gallery_folder}")
+            print("Creating gallery folder...")
+            os.makedirs(gallery_folder, exist_ok=True)
+            print(f"Created gallery folder: {gallery_folder}")
+            print("Please add person images to this folder for re-identification")
             return
         
-        for img_file in os.listdir(gallery_folder):
-            if img_file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                img_path = os.path.join(gallery_folder, img_file)
-                try:
-                    # Load and process image
-                    image = cv2.imread(img_path)
-                    if image is None:
-                        continue
-                    
-                    # Detect person using YOLO
-                    results = self.reidentifier.yolo(image, classes=0, conf=0.6)
-                    
-                    for r in results:
-                        boxes = r.boxes
-                        if boxes is not None:
-                            for box in boxes:
-                                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
-                                person_img = image[y1:y2, x1:x2]
-                                
-                                if person_img.size > 0:
-                                    # Extract features
-                                    features = self.reidentifier.extract_features_corrected(person_img)
-                                    if features is not None:
-                                        self.gallery_features.append(features)
-                                        self.gallery_images.append(person_img)
-                                        print(f"Loaded gallery person from {img_file}")
-                                        break
-                            break
+        # Check if folder is empty
+        image_files = [f for f in os.listdir(gallery_folder) 
+                      if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        
+        if not image_files:
+            print(f"Gallery folder is empty: {gallery_folder}")
+            print("Please add person images to this folder for re-identification")
+            return
+        
+        for img_file in image_files:
+            img_path = os.path.join(gallery_folder, img_file)
+            print(f"Processing gallery image: {img_path}")
+            try:
+                # Load and process image
+                image = cv2.imread(img_path)
+                if image is None:
+                    print(f"Failed to load image: {img_path}")
+                    continue
+                
+                print(f"Image loaded successfully, shape: {image.shape}")
+                
+                # Detect person using YOLO
+                print("Running YOLO detection on gallery image...")
+                results = self.reidentifier.yolo(image, classes=0, conf=0.6)
+                print(f"YOLO detection results: {len(results)} detections")
+                
+                for r in results:
+                    boxes = r.boxes
+                    if boxes is not None:
+                        print(f"Found {len(boxes)} person boxes")
+                        for box in boxes:
+                            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+                            person_img = image[y1:y2, x1:x2]
                             
-                except Exception as e:
-                    print(f"Error loading gallery image {img_file}: {e}")
+                            if person_img.size > 0:
+                                print(f"Extracting features from person crop, shape: {person_img.shape}")
+                                # Extract features
+                                features = self.reidentifier.extract_features_corrected(person_img)
+                                if features is not None:
+                                    self.gallery_features.append(features)
+                                    self.gallery_images.append(person_img)
+                                    print(f"Loaded gallery person from {img_file}")
+                                    break
+                        break
+                    else:
+                        print("No person boxes found in YOLO results")
+                        
+            except Exception as e:
+                print(f"Error loading gallery image {img_file}: {e}")
+                import traceback
+                traceback.print_exc()
         
         print(f"Loaded {len(self.gallery_features)} gallery persons")
     
@@ -112,7 +154,7 @@ class BPBreIDReidentifier:
     def compute_similarity(self, query_features):
         """Compute similarity between query and gallery features"""
         if not self.gallery_features or query_features is None:
-            return None, 0.0
+            return 0, 0.0  # Return valid indices instead of None
             
         # Convert to tensor
         gallery_tensor = torch.cat(self.gallery_features, dim=0)
@@ -126,7 +168,8 @@ class BPBreIDReidentifier:
     def match_person(self, person_img, frames_to_match=4, min_matches=2):
         """Match a person against gallery using multiple frames"""
         if not self.gallery_features:
-            return None, 0.0
+            print("No gallery features available for matching")
+            return False, 0.0, 0.0  # Return 3 values as expected
             
         matches = 0
         total_similarity = 0.0
@@ -136,18 +179,27 @@ class BPBreIDReidentifier:
             try:
                 features = self.extract_features(person_img)
                 if features is not None:
+                    print(f"Frame {i}: Extracted features, shape: {features.shape}")
                     idx, similarity = self.compute_similarity(features)
+                    print(f"Frame {i}: Computed similarity - idx: {idx}, similarity: {similarity}")
                     if similarity > self.reid_threshold:
                         matches += 1
                         total_similarity += similarity
                         best_similarity = max(best_similarity, similarity)
+                        print(f"Frame {i}: Match found! similarity: {similarity}")
+                else:
+                    print(f"Frame {i}: Failed to extract features")
             except Exception as e:
                 print(f"Error in frame {i}: {e}")
+                import traceback
+                traceback.print_exc()
         
         if matches >= min_matches:
             avg_similarity = total_similarity / matches
+            print(f"Final result: Match found! avg_similarity: {avg_similarity}, best_similarity: {best_similarity}")
             return True, avg_similarity, best_similarity
         
+        print(f"Final result: No match. avg_similarity: {total_similarity / frames_to_match if frames_to_match > 0 else 0.0}, best_similarity: {best_similarity}")
         return False, total_similarity / frames_to_match if frames_to_match > 0 else 0.0, best_similarity
 
 class PersonTracker:
@@ -171,7 +223,7 @@ class PersonTracker:
         self.history_file = "person_history.pkl"
 
         self.bpbreid = BPBreIDReidentifier()
-        self.gallery_folder = "gallery_persons"  # Folder containing person images
+        self.gallery_folder = "gallery_folder"  # Folder containing person images
 
         print("Person tracker initialized with:")
         print(f"- Max disappeared frames: {max_disappeared}")
@@ -575,15 +627,23 @@ class PersonTracker:
                 if person_img.size > 0:
                     # Load gallery persons if not already loaded
                     if not self.bpbreid.gallery_features:
+                        print("Loading gallery persons...")
                         self.bpbreid.load_gallery_persons(self.gallery_folder)
                     
                     # Try to match with gallery using BPBreID
-                    is_match, avg_similarity, best_similarity = self.bpbreid.match_person(person_img)
-                    
-                    if is_match:
-                        bpbreid_match = True
-                        bpbreid_confidence = best_similarity
-                        print(f"BPBreID found match with confidence: {best_similarity:.3f}")
+                    print("Calling BPBreID match_person...")
+                    try:
+                        is_match, avg_similarity, best_similarity = self.bpbreid.match_person(person_img)
+                        print(f"BPBreID match result: is_match={is_match}, avg_similarity={avg_similarity}, best_similarity={best_similarity}")
+                        
+                        if is_match:
+                            bpbreid_match = True
+                            bpbreid_confidence = best_similarity
+                            print(f"BPBreID found match with confidence: {best_similarity:.3f}")
+                    except Exception as e:
+                        print(f"Error in BPBreID matching: {e}")
+                        import traceback
+                        traceback.print_exc()
             
             # If BPBreID found a match, use it
             if bpbreid_match:
