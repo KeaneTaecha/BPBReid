@@ -15,14 +15,14 @@ def upload_image_to_freeimage(image_path):
             files = {'source': file}
             data = {'key': os.getenv('FREEIMAGE_API_KEY')}  # Load from .env
             response = requests.post(url, files=files, data=data)
-
+        
         if response.status_code == 200:
             result = response.json()
             if result['status_code'] == 200:
                 image_url = result['image']['url']
                 print(f"Image uploaded: {image_url}")
                 return image_url
-
+        
         print(f"Upload failed: {response.text}")
         return None
     except Exception as e:
@@ -31,31 +31,31 @@ def upload_image_to_freeimage(image_path):
 
 def send_whatsapp_alert_with_image(image_path=None, timestamp=None):
     """Send WhatsApp alert with image when falling is detected"""
-
+    
     # Load from environment variables
     account_sid = os.getenv('TWILIO_ACCOUNT_SID')
     auth_token = os.getenv('TWILIO_AUTH_TOKEN')
     twilio_whatsapp_number = os.getenv('TWILIO_WHATSAPP_NUMBER')
     your_whatsapp_number = os.getenv('YOUR_WHATSAPP_NUMBER')
-
+    
     # Validate that all required environment variables are present
     if not all([account_sid, auth_token, twilio_whatsapp_number, your_whatsapp_number]):
         print("Error: Missing required environment variables. Please check your .env file.")
         return None
-
+    
     try:
         client = Client(account_sid, auth_token)
-
+        
         message_body = f"⚠️ FALL DETECTED! Time: {timestamp}"
-
+        
         message = client.messages.create(
             body=message_body,
             from_=twilio_whatsapp_number,
             to=your_whatsapp_number
         )
-
+        
         print(f"Fall alert sent! Message SID: {message.sid}")
-
+        
         # Upload and send image link separately
         if image_path and os.path.exists(image_path):
             image_url = upload_image_to_freeimage(image_path)
@@ -67,9 +67,9 @@ def send_whatsapp_alert_with_image(image_path=None, timestamp=None):
                     to=your_whatsapp_number
                 )
                 print(f"Image link sent! Message SID: {follow_up.sid}")
-
+        
         return message.sid
-
+        
     except Exception as e:
         print(f"Error sending WhatsApp alert: {str(e)}")
         return None
