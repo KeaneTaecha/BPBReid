@@ -146,12 +146,12 @@ class ImprovedBPBreIDYOLOMaskedReID:
         print("Loading corrected BPBreid model...")
         
         try:
-            # Build model with original configuration
-            model = torchreid.models.build_model(
-                name='bpbreid',
+            # Build model directly using the bpbreid function instead of build_model
+            model = torchreid.models.bpbreid(
                 num_classes=751,
-                config=self.config,
-                pretrained=True
+                loss='part_based',
+                pretrained=True,
+                config=self.config
             )
             
             # Load weights
