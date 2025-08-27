@@ -1,0 +1,18 @@
+{
+  "timestamp": "2025-08-27T18:03:09.467939",
+  "video_path": "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets/Compare/dataset-1/incorrect.MOV",
+  "gallery_path": "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets/Compare/dataset-1/gallery-person.jpg",
+  "total_frames": 307,
+  "frames_with_detection": 6,
+  "frames_with_match": 0,
+  "frames_without_match": 6,
+  "similarity_scores": [
+    0.3453609049320221,
+    0.3346591293811798,
+    0.3616272807121277,
+    0.3734564781188965,
+    0.36604052782058716,
+    0.3578014671802521
+  ],
+  "reid_threshold": 0.46
+}

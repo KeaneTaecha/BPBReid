@@ -146,14 +146,12 @@ class ImprovedBPBreIDYOLOMaskedReID:
         print("Loading corrected BPBreid model...")
         
         try:
-            # Build model with original configuration - pass config through kwargs
+            # Build model with original configuration
             model = torchreid.models.build_model(
                 name='bpbreid',
                 num_classes=751,
-                loss='part_based',
-                pretrained=True,
-                use_gpu=self.device.type == 'cuda',
-                config=self.config
+                config=self.config,
+                pretrained=True
             )
             
             # Load weights

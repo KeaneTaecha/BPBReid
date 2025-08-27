@@ -146,13 +146,73 @@ class ImprovedBPBreIDYOLOMaskedReID:
         print("Loading corrected BPBreid model...")
         
         try:
-            # Build model with original configuration
-            model = torchreid.models.build_model(
-                name='bpbreid',
-                num_classes=751,
-                config=self.config,
-                pretrained=True
-            )
+            # Try building model with config parameter first (newer version)
+            try:
+                model = torchreid.models.build_model(
+                    name='bpbreid',
+                    num_classes=751,
+                    config=self.config,
+                    pretrained=True
+                )
+                print("Model built with config parameter (newer version)")
+            except TypeError as e:
+                if "unexpected keyword argument 'config'" in str(e):
+                    # Fallback to older version without config parameter
+                    print("Falling back to older build_model version without config parameter")
+                    print("Creating default configuration for BPBreID...")
+                    
+                    # Create a default configuration that matches our config structure
+                    from types import SimpleNamespace
+                    default_config = SimpleNamespace()
+                    default_config.model = SimpleNamespace()
+                    default_config.model.bpbreid = SimpleNamespace()
+                    
+                    # Set default values that match our config
+                    default_config.model.bpbreid.backbone = 'hrnet32'
+                    default_config.model.bpbreid.hrnet_pretrained_path = os.path.dirname(self.config.model.bpbreid.hrnet_pretrained_path) + '/'
+                    default_config.model.bpbreid.pooling = 'gwap'
+                    default_config.model.bpbreid.normalization = 'identity'
+                    default_config.model.bpbreid.dim_reduce = 'after_pooling'
+                    default_config.model.bpbreid.dim_reduce_output = 512
+                    default_config.model.bpbreid.last_stride = 1
+                    default_config.model.bpbreid.shared_parts_id_classifier = False
+                    default_config.model.bpbreid.learnable_attention_enabled = True
+                    default_config.model.bpbreid.test_use_target_segmentation = 'soft'
+                    default_config.model.bpbreid.testing_binary_visibility_score = True
+                    default_config.model.bpbreid.training_binary_visibility_score = True
+                    default_config.model.bpbreid.mask_filtering_testing = True
+                    default_config.model.bpbreid.mask_filtering_training = True
+                    
+                    # Mask configuration
+                    default_config.model.bpbreid.masks = SimpleNamespace()
+                    default_config.model.bpbreid.masks.parts_num = 5
+                    default_config.model.bpbreid.masks.preprocess = 'five_v'
+                    default_config.model.bpbreid.masks.softmax_weight = 1.0
+                    default_config.model.bpbreid.masks.background_computation_strategy = 'threshold'
+                    default_config.model.bpbreid.masks.mask_filtering_threshold = 0.3
+                    
+                    # Try building with the default config
+                    try:
+                        model = torchreid.models.build_model(
+                            name='bpbreid',
+                            num_classes=751,
+                            config=default_config,
+                            pretrained=True
+                        )
+                        print("Model built with default config (older version)")
+                    except TypeError:
+                        # If that still fails, try without any config
+                        print("Trying without config parameter...")
+                        model = torchreid.models.build_model(
+                            name='bpbreid',
+                            num_classes=751,
+                            loss='part_based',
+                            pretrained=True,
+                            use_gpu=self.device.type == 'cuda'
+                        )
+                        print("Model built without config parameter (fallback)")
+                else:
+                    raise e
             
             # Load weights
             checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)
