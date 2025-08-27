@@ -34,6 +34,11 @@ from types import SimpleNamespace
 # Add the parent directory to sys.path to import torchreid modules
 sys.path.append(str(Path(__file__).parent.parent))
 
+# Add the project root to sys.path to import torchreid modules
+project_root = str(Path(__file__).parent.parent.parent)
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
 class ImprovedBPBreIDYOLOMaskedReID:
     """
     Improved BPBreID re-identification system with corrected processing
@@ -147,8 +152,8 @@ class ImprovedBPBreIDYOLOMaskedReID:
         
         try:
             # Import bpbreid function directly from the bpbreid module
-            import torchreid.models.bpbreid as bpbreid_module
-            model = bpbreid_module.bpbreid(
+            from torchreid.models.bpbreid import bpbreid
+            model = bpbreid(
                 num_classes=751,
                 loss='part_based',
                 pretrained=True,
