@@ -30,8 +30,8 @@ class BPBreIDReidentifier:
             from bpbreid_yolo_masked_reid_fin2 import ImprovedBPBreIDYOLOMaskedReID
             
             # Initialize the re-identifier
-            reid_model_path = "pretrained_models/bpbreid_market1501_hrnet32_10642.pth"
-            hrnet_path = "pretrained_models/hrnetv2_w32_imagenet_pretrained.pth"
+            reid_model_path = "../../pretrained_models/bpbreid_market1501_hrnet32_10642.pth"
+            hrnet_path = "../../pretrained_models/hrnetv2_w32_imagenet_pretrained.pth"
             
             self.reidentifier = ImprovedBPBreIDYOLOMaskedReID(
                 reid_model_path=reid_model_path,
