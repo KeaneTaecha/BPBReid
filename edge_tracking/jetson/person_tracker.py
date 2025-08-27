@@ -625,6 +625,11 @@ class PersonTracker:
             
             # If no BPBreID match, try to match with historical persons from file
             history = self.load_history()
+            
+            # Ensure history is a dictionary
+            if history is None:
+                history = {}
+                
             print(f"History entries available: {len(history)}")
 
             # Find the best match in history
@@ -709,6 +714,11 @@ class PersonTracker:
 
       # Load history to check historical IDs as well
       history = self.load_history()
+      
+      # Ensure history is a dictionary
+      if history is None:
+          history = {}
+          
       historical_ids = set(history.keys())
 
       # Combine all known IDs
