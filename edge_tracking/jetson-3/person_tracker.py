@@ -171,7 +171,7 @@ class PersonTracker:
         self.history_file = "person_history.pkl"
 
         self.bpbreid = BPBreIDReidentifier()
-        self.gallery_folder = "gallery_persons"
+        self.gallery_folder = "gallery_persons"  # Folder containing person images
 
         print("Person tracker initialized with:")
         print(f"- Max disappeared frames: {max_disappeared}")
@@ -551,7 +551,7 @@ class PersonTracker:
                         self.save_history(history)
                         print(f"Person ID {person_id} moved to history")
                         del self.persons[person_id]
-        
+
         # PART 2: Re-identify from history for remaining detections
         # Process each unmatched detection
         for j in range(len(boxes)):
@@ -607,56 +607,55 @@ class PersonTracker:
             
             # If no BPBreID match, try to match with historical persons from file
             history = self.load_history()
-            print(f"History entries available: {len(history) if history is not None else 0}")
+            print(f"History entries available: {len(history)}")
 
-            # Find the best match in history (only if history exists and is not None)
+            # Find the best match in history
             best_match = None
             best_dist = float('inf')
 
-            # Check against history (only if history exists)
-            if history is not None:
-                for hist_id, hist_data in history.items():
-                    # Filter based on size similarity
-                    hist_box = hist_data["bbox"]
-                    curr_box = boxes[j]
+            # Check against history
+            for hist_id, hist_data in history.items():
+                # Filter based on size similarity
+                hist_box = hist_data["bbox"]
+                curr_box = boxes[j]
 
-                    # Compare box aspect ratios
-                    hist_ratio = hist_box[2] / max(hist_box[3], 1)
-                    curr_ratio = curr_box[2] / max(curr_box[3], 1)
+                # Compare box aspect ratios
+                hist_ratio = hist_box[2] / max(hist_box[3], 1)
+                curr_ratio = curr_box[2] / max(curr_box[3], 1)
 
-                    # Skip if aspect ratios are too different
-                    if abs(hist_ratio - curr_ratio) > 0.7:
-                        continue
+                # Skip if aspect ratios are too different
+                if abs(hist_ratio - curr_ratio) > 0.7:
+                    continue
 
-                    # Compare areas
-                    hist_area = hist_box[2] * hist_box[3]
-                    curr_area = curr_box[2] * curr_box[3]
-                    area_ratio = max(hist_area, curr_area) / max(min(hist_area, curr_area), 1)
+                # Compare areas
+                hist_area = hist_box[2] * hist_box[3]
+                curr_area = curr_box[2] * curr_box[3]
+                area_ratio = max(hist_area, curr_area) / max(min(hist_area, curr_area), 1)
 
-                    # Skip if size difference is too large
-                    if area_ratio > 7:
-                        continue
+                # Skip if size difference is too large
+                if area_ratio > 7:
+                    continue
 
-                    # Calculate feature distance for appearance matching
-                    single_feature_list = [features_list[j]]
-                    result = self._calculate_feature_distances_vectorized(hist_data["features"], single_feature_list)
+                # Calculate feature distance for appearance matching
+                single_feature_list = [features_list[j]]
+                result = self._calculate_feature_distances_vectorized(hist_data["features"], single_feature_list)
 
-                    # Extract distance value
-                    if isinstance(result, tuple):
-                        valid_indices, combined_distances = result
-                        if len(combined_distances) > 0:
-                            feature_dist = float(combined_distances[0])
-                        else:
-                            feature_dist = float('inf')
-                    elif isinstance(result, (list, np.ndarray)):
-                        feature_dist = float(result[0])
+                # Extract distance value
+                if isinstance(result, tuple):
+                    valid_indices, combined_distances = result
+                    if len(combined_distances) > 0:
+                        feature_dist = float(combined_distances[0])
                     else:
-                        feature_dist = float(result)
+                        feature_dist = float('inf')
+                elif isinstance(result, (list, np.ndarray)):
+                    feature_dist = float(result[0])
+                else:
+                    feature_dist = float(result)
 
-                    # Threshold for reappearances
-                    if feature_dist < best_dist and feature_dist < self.reidentification_threshold:
-                        best_dist = feature_dist
-                        best_match = hist_id
+                # Threshold for reappearances
+                if feature_dist < best_dist and feature_dist < self.reidentification_threshold:
+                    best_dist = feature_dist
+                    best_match = hist_id
 
             # Apply the best match if found in history
             if best_match is not None:
@@ -669,8 +668,8 @@ class PersonTracker:
                 }
                 print(f"Re-identified person ID {best_match} from history, distance={best_dist:.4f}")
 
-                # Remove from history file (only if history exists)
-                if history is not None and best_match in history:
+                # Remove from history file
+                if best_match in history:
                     del history[best_match]
                     self.save_history(history)
 
@@ -680,125 +679,6 @@ class PersonTracker:
                 self.register(centroids[j], boxes[j], features_list[j])
                 print(f"Registered new person with ID {self.next_id-1}")
                 used_detections.add(j)
-
-        # # PART 2: Re-identify from history for remaining detections
-        # # Process each unmatched detection
-        # for j in range(len(boxes)):
-        #     if j in used_detections or features_list[j] is None:
-        #         continue
-
-        #     # First try to match with historical persons from file
-        #     history = self.load_history()
-            
-        #     # Force re-identification check
-        #     print(f"Starting reidentification for detection {j}...")
-        #     print(f"History entries available: {len(history)}")
-
-        #     # Find the best match in history
-        #     best_match = None
-        #     best_dist = float('inf')
-
-        #     # Check against history
-        #     for hist_id, hist_data in history.items():
-        #         # Filter based on size similarity
-        #         hist_box = hist_data["bbox"]
-        #         curr_box = boxes[j]
-
-        #         # Compare box aspect ratios
-        #         hist_ratio = hist_box[2] / max(hist_box[3], 1)
-        #         curr_ratio = curr_box[2] / max(curr_box[3], 1)
-
-        #         # Skip if aspect ratios are too different
-        #         if abs(hist_ratio - curr_ratio) > 0.7:
-        #             continue
-
-        #         # Compare areas
-        #         hist_area = hist_box[2] * hist_box[3]
-        #         curr_area = curr_box[2] * curr_box[3]
-        #         area_ratio = max(hist_area, curr_area) / max(min(hist_area, curr_area), 1)
-
-        #         # Skip if size difference is too large
-        #         if area_ratio > 7:
-        #             continue
-
-        #         # Calculate feature distance for appearance matching
-        #         single_feature_list = [features_list[j]]
-        #         result = self._calculate_feature_distances_vectorized(hist_data["features"], single_feature_list)
-
-        #         # Extract distance value
-        #         if isinstance(result, tuple):
-        #             valid_indices, combined_distances = result
-        #             if len(combined_distances) > 0:
-        #                 feature_dist = float(combined_distances[0])
-        #             else:
-        #                 feature_dist = float('inf')
-        #         elif isinstance(result, (list, np.ndarray)):
-        #             feature_dist = float(result[0])
-        #         else:
-        #             feature_dist = float(result)
-
-        #         # Threshold for reappearances
-        #         if feature_dist < best_dist and feature_dist < self.reidentification_threshold:
-        #             best_dist = feature_dist
-        #             best_match = hist_id
-
-        #     # If no match in history, try BPBreID gallery matching
-        #     if best_match is None and self.bpbreid.reidentifier is not None:
-        #         print("Trying BPBreID gallery matching...")
-                
-        #         # Extract person image
-        #         x, y, w, h = boxes[j]
-        #         person_img = frame[y:y+h, x:x+w]
-                
-        #         if person_img.size > 0:
-        #             # Load gallery persons if not already loaded
-        #             if not self.bpbreid.gallery_features:
-        #                 self.bpbreid.load_gallery_persons(self.gallery_folder)
-                    
-        #             # Try to match with gallery
-        #             is_match, avg_similarity, best_similarity = self.bpbreid.match_person(person_img)
-                    
-        #             if is_match:
-        #                 # Create a new ID for this gallery person
-        #                 new_id = self.next_id
-        #                 self.next_id += 1
-                        
-        #                 # Register as a new person
-        #                 self.persons[new_id] = {
-        #                     "centroid": centroids[j],
-        #                     "bbox": boxes[j],
-        #                     "disappeared": 0,
-        #                     "features": features_list[j],
-        #                     "gallery_match": True,
-        #                     "match_confidence": best_similarity
-        #                 }
-                        
-        #                 print(f"BPBreID matched with gallery person, assigned ID: {new_id}, confidence: {best_similarity:.3f}")
-        #                 used_detections.add(j)
-        #                 continue
-
-        #     # Apply the best match if found in history
-        #     if best_match is not None:
-        #         # Re-register with original ID
-        #         self.persons[best_match] = {
-        #             "centroid": centroids[j],
-        #             "bbox": boxes[j],
-        #             "disappeared": 0,
-        #             "features": features_list[j]
-        #         }
-        #         print(f"Re-identified person ID {best_match} from history, distance={best_dist:.4f}")
-
-        #         # Remove from history file
-        #         if best_match in history:
-        #             del history[best_match]
-        #             self.save_history(history)
-
-        #         used_detections.add(j)
-        #     else:
-        #         # Register as new person
-        #         self.register(centroids[j], boxes[j], features_list[j])
-        #         print(f"Registered new person with ID {self.next_id-1}")
-        #         used_detections.add(j)
 
         # Log current tracking status
         history = self.load_history()
