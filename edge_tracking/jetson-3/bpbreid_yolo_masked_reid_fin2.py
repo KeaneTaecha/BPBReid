@@ -34,11 +34,6 @@ from types import SimpleNamespace
 # Add the parent directory to sys.path to import torchreid modules
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Add the project root to sys.path to import torchreid modules
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.append(project_root)
-
 class ImprovedBPBreIDYOLOMaskedReID:
     """
     Improved BPBreID re-identification system with corrected processing
@@ -151,12 +146,13 @@ class ImprovedBPBreIDYOLOMaskedReID:
         print("Loading corrected BPBreid model...")
         
         try:
-            # Import bpbreid function directly from the bpbreid module
-            from torchreid.models.bpbreid import bpbreid
-            model = bpbreid(
+            # Build model with original configuration - pass config through kwargs
+            model = torchreid.models.build_model(
+                name='bpbreid',
                 num_classes=751,
                 loss='part_based',
                 pretrained=True,
+                use_gpu=self.device.type == 'cuda',
                 config=self.config
             )
             
