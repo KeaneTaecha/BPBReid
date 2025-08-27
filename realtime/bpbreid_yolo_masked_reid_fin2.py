@@ -196,25 +196,47 @@ class ImprovedBPBreIDYOLOMaskedReID:
                         default_config.model.bpbreid.masks.background_computation_strategy = 'threshold'
                         default_config.model.bpbreid.masks.mask_filtering_threshold = 0.3
                         
-                        # Try building with the default config using direct import
+                                            # Try building with the default config using direct import
                         try:
+                            # Create proper config structure that matches what bpbreid expects
+                            proper_config = SimpleNamespace()
+                            proper_config.model = SimpleNamespace()
+                            proper_config.model.bpbreid = default_config.model.bpbreid
+                            
                             model = bpbreid(
                                 num_classes=751,
                                 loss='part_based',
                                 pretrained=True,
-                                config=default_config
+                                config=proper_config
                             )
-                            print("Model built with direct BPBreID import and default config")
+                            print("Model built with direct BPBreID import and proper config")
                         except Exception as direct_error:
                             print(f"Direct BPBreID import failed: {direct_error}")
                             # If that still fails, try without any config
                             print("Trying without config parameter...")
-                            model = bpbreid(
-                                num_classes=751,
-                                loss='part_based',
-                                pretrained=True
-                            )
-                            print("Model built with direct BPBreID import without config")
+                            try:
+                                model = bpbreid(
+                                    num_classes=751,
+                                    loss='part_based',
+                                    pretrained=True
+                                )
+                                print("Model built with direct BPBreID import without config")
+                            except Exception as no_config_error:
+                                print(f"BPBreID import without config also failed: {no_config_error}")
+                                # As a last resort, try to use a different model
+                                print("Trying to use alternative model (resnet50)...")
+                                try:
+                                    model = torchreid.models.build_model(
+                                        name='resnet50',
+                                        num_classes=751,
+                                        loss='softmax',
+                                        pretrained=True,
+                                        use_gpu=self.device.type == 'cuda'
+                                    )
+                                    print("Using resnet50 as fallback (note: this won't have BPBreID features)")
+                                except Exception as fallback_error:
+                                    print(f"Fallback model also failed: {fallback_error}")
+                                    raise e
                     
                     except ImportError as import_error:
                         print(f"BPBreID model not available: {import_error}")
