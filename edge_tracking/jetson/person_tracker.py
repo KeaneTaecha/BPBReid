@@ -382,6 +382,10 @@ class PersonTracker:
         person_features = np.array(person_features)
         features_array = np.array(valid_features)
 
+        # Ensure features_array is 2D even for single feature
+        if features_array.ndim == 1:
+            features_array = features_array.reshape(1, -1)
+
         # Extract color histogram and HOG portions
         color_length = 12**3 * 3
 
@@ -644,18 +648,11 @@ class PersonTracker:
                 if isinstance(result, tuple):
                     valid_indices, combined_distances = result
                     if len(combined_distances) > 0:
-                        # Handle both scalar and array cases
-                        if combined_distances.ndim == 0:
-                            feature_dist = float(combined_distances)
-                        else:
-                            feature_dist = float(combined_distances[0])
+                        feature_dist = float(combined_distances[0])
                     else:
                         feature_dist = float('inf')
                 elif isinstance(result, (list, np.ndarray)):
-                    if isinstance(result, np.ndarray) and result.ndim == 0:
-                        feature_dist = float(result)
-                    else:
-                        feature_dist = float(result[0])
+                    feature_dist = float(result[0])
                 else:
                     feature_dist = float(result)
 
