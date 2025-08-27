@@ -199,10 +199,10 @@ class PersonTracker:
                 return history
             else:
                 print("No history file found, starting with empty history")
-                return {}
+                return {}  # Always return a dictionary, not None
         except Exception as e:
             print(f"Error loading history: {e}")
-            return {}
+            return {}  # Always return a dictionary, not None
 
     def initialize_model(self):
         """Initialize YOLOv11 model using Ultralytics"""
