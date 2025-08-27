@@ -143,37 +143,24 @@ class ImprovedBPBreIDYOLOMaskedReID:
         return config
     
     def _load_corrected_model(self):
-        """Load BPBreID model with corrected loading (compatible with both API versions)"""
+        """Load BPBreID model with corrected loading (compatible with Jetson)"""
         print("Loading corrected BPBreid model...")
         
         try:
-            # Try the newer API first (with config parameter)
-            try:
-                model = torchreid.models.build_model(
-                    name='bpbreid',
-                    num_classes=751,
-                    config=self.config,
-                    pretrained=True
-                )
-            except TypeError as e:
-                # Fallback to older API (without config parameter)
-                print("Using alternative model loading method for compatibility...")
-                
-                # Set the config as module-level attributes for older torchreid versions
-                import torchreid.models.bpbreid as bpbreid_module
-                
-                # Apply config settings directly to the module if needed
-                model = torchreid.models.build_model(
-                    name='bpbreid',
-                    num_classes=751,
-                    pretrained=False  # We'll load weights manually
-                )
-                
-                # Apply configuration to the model after creation
-                if hasattr(model, 'config'):
-                    model.config = self.config
+            # Directly import and instantiate the BPBreID model
+            from torchreid.models import BPBreID
+            
+            # Create model instance directly
+            print("Creating BPBreID model instance...")
+            model = BPBreID(
+                num_classes=751,
+                loss='softmax',
+                pretrained=False,
+                config=self.config
+            )
             
             # Load weights
+            print(f"Loading weights from: {self.config.model.load_weights}")
             checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)
             
             # Handle state dict
@@ -205,6 +192,44 @@ class ImprovedBPBreIDYOLOMaskedReID:
             print("Corrected BPBreid model loaded successfully")
             return model
             
+        except ImportError:
+            # If direct import fails, try alternative approach
+            print("Direct import failed, trying alternative loading method...")
+            try:
+                # Try loading without config parameter
+                model = torchreid.models.build_model(
+                    name='bpbreid',
+                    num_classes=751,
+                    pretrained=False
+                )
+                
+                # Load weights manually
+                checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)
+                
+                if 'state_dict' in checkpoint:
+                    state_dict = checkpoint['state_dict']
+                else:
+                    state_dict = checkpoint
+                
+                # Remove 'module.' prefix if present
+                new_state_dict = {}
+                for k, v in state_dict.items():
+                    if k.startswith('module.'):
+                        new_state_dict[k[7:]] = v
+                    else:
+                        new_state_dict[k] = v
+                
+                model.load_state_dict(new_state_dict, strict=False)
+                model = model.to(self.device)
+                model.eval()
+                
+                print("Model loaded using alternative method")
+                return model
+                
+            except Exception as e2:
+                print(f"Alternative loading also failed: {e2}")
+                raise e2
+                
         except Exception as e:
             print(f"Error loading corrected BPBreid model: {e}")
             raise e
