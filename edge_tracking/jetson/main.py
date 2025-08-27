@@ -267,6 +267,10 @@ def main():
 
                 # Load current history
                 history = ptz_camera.person_tracker.load_history()
+                
+                # Ensure history is a dictionary
+                if history is None:
+                    history = {}
 
                 # Add all active persons to history
                 for person_id, person_data in ptz_camera.person_tracker.persons.items():
