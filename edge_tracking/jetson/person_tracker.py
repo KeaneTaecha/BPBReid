@@ -12,7 +12,9 @@ from torchvision import transforms
 from PIL import Image
 import sys
 from pathlib import Path
-# Add this class definition before the PersonTracker class
+
+
+#  Add this class definition before the PersonTracker class
 class BPBreIDReidentifier:
     def __init__(self, device='cuda' if torch.cuda.is_available() else 'cpu'):
         self.device = device
