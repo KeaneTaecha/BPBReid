@@ -644,11 +644,18 @@ class PersonTracker:
                 if isinstance(result, tuple):
                     valid_indices, combined_distances = result
                     if len(combined_distances) > 0:
-                        feature_dist = float(combined_distances[0])
+                        # Handle both scalar and array cases
+                        if combined_distances.ndim == 0:
+                            feature_dist = float(combined_distances)
+                        else:
+                            feature_dist = float(combined_distances[0])
                     else:
                         feature_dist = float('inf')
                 elif isinstance(result, (list, np.ndarray)):
-                    feature_dist = float(result[0])
+                    if isinstance(result, np.ndarray) and result.ndim == 0:
+                        feature_dist = float(result)
+                    else:
+                        feature_dist = float(result[0])
                 else:
                     feature_dist = float(result)
 
