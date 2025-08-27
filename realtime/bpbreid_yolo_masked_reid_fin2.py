@@ -155,62 +155,90 @@ class ImprovedBPBreIDYOLOMaskedReID:
                     pretrained=True
                 )
                 print("Model built with config parameter (newer version)")
-            except TypeError as e:
-                if "unexpected keyword argument 'config'" in str(e):
-                    # Fallback to older version without config parameter
-                    print("Falling back to older build_model version without config parameter")
+            except (TypeError, KeyError) as e:
+                if "unexpected keyword argument 'config'" in str(e) or "Unknown model: bpbreid" in str(e):
+                    # Fallback to older version without config parameter or missing bpbreid model
+                    print("Falling back to older build_model version or missing bpbreid model")
                     print("Creating default configuration for BPBreID...")
                     
-                    # Create a default configuration that matches our config structure
-                    from types import SimpleNamespace
-                    default_config = SimpleNamespace()
-                    default_config.model = SimpleNamespace()
-                    default_config.model.bpbreid = SimpleNamespace()
-                    
-                    # Set default values that match our config
-                    default_config.model.bpbreid.backbone = 'hrnet32'
-                    default_config.model.bpbreid.hrnet_pretrained_path = os.path.dirname(self.config.model.bpbreid.hrnet_pretrained_path) + '/'
-                    default_config.model.bpbreid.pooling = 'gwap'
-                    default_config.model.bpbreid.normalization = 'identity'
-                    default_config.model.bpbreid.dim_reduce = 'after_pooling'
-                    default_config.model.bpbreid.dim_reduce_output = 512
-                    default_config.model.bpbreid.last_stride = 1
-                    default_config.model.bpbreid.shared_parts_id_classifier = False
-                    default_config.model.bpbreid.learnable_attention_enabled = True
-                    default_config.model.bpbreid.test_use_target_segmentation = 'soft'
-                    default_config.model.bpbreid.testing_binary_visibility_score = True
-                    default_config.model.bpbreid.training_binary_visibility_score = True
-                    default_config.model.bpbreid.mask_filtering_testing = True
-                    default_config.model.bpbreid.mask_filtering_training = True
-                    
-                    # Mask configuration
-                    default_config.model.bpbreid.masks = SimpleNamespace()
-                    default_config.model.bpbreid.masks.parts_num = 5
-                    default_config.model.bpbreid.masks.preprocess = 'five_v'
-                    default_config.model.bpbreid.masks.softmax_weight = 1.0
-                    default_config.model.bpbreid.masks.background_computation_strategy = 'threshold'
-                    default_config.model.bpbreid.masks.mask_filtering_threshold = 0.3
-                    
-                    # Try building with the default config
+                    # Try to import BPBreID directly
                     try:
-                        model = torchreid.models.build_model(
-                            name='bpbreid',
-                            num_classes=751,
-                            config=default_config,
-                            pretrained=True
-                        )
-                        print("Model built with default config (older version)")
-                    except TypeError:
-                        # If that still fails, try without any config
-                        print("Trying without config parameter...")
-                        model = torchreid.models.build_model(
-                            name='bpbreid',
-                            num_classes=751,
-                            loss='part_based',
-                            pretrained=True,
-                            use_gpu=self.device.type == 'cuda'
-                        )
-                        print("Model built without config parameter (fallback)")
+                        from torchreid.models.bpbreid import bpbreid
+                        print("Directly importing BPBreID model...")
+                        
+                        # Create a default configuration that matches our config structure
+                        from types import SimpleNamespace
+                        default_config = SimpleNamespace()
+                        default_config.model = SimpleNamespace()
+                        default_config.model.bpbreid = SimpleNamespace()
+                        
+                        # Set default values that match our config
+                        default_config.model.bpbreid.backbone = 'hrnet32'
+                        default_config.model.bpbreid.hrnet_pretrained_path = os.path.dirname(self.config.model.bpbreid.hrnet_pretrained_path) + '/'
+                        default_config.model.bpbreid.pooling = 'gwap'
+                        default_config.model.bpbreid.normalization = 'identity'
+                        default_config.model.bpbreid.dim_reduce = 'after_pooling'
+                        default_config.model.bpbreid.dim_reduce_output = 512
+                        default_config.model.bpbreid.last_stride = 1
+                        default_config.model.bpbreid.shared_parts_id_classifier = False
+                        default_config.model.bpbreid.learnable_attention_enabled = True
+                        default_config.model.bpbreid.test_use_target_segmentation = 'soft'
+                        default_config.model.bpbreid.testing_binary_visibility_score = True
+                        default_config.model.bpbreid.training_binary_visibility_score = True
+                        default_config.model.bpbreid.mask_filtering_testing = True
+                        default_config.model.bpbreid.mask_filtering_training = True
+                        
+                        # Mask configuration
+                        default_config.model.bpbreid.masks = SimpleNamespace()
+                        default_config.model.bpbreid.masks.parts_num = 5
+                        default_config.model.bpbreid.masks.preprocess = 'five_v'
+                        default_config.model.bpbreid.masks.softmax_weight = 1.0
+                        default_config.model.bpbreid.masks.background_computation_strategy = 'threshold'
+                        default_config.model.bpbreid.masks.mask_filtering_threshold = 0.3
+                        
+                        # Try building with the default config using direct import
+                        try:
+                            model = bpbreid(
+                                num_classes=751,
+                                loss='part_based',
+                                pretrained=True,
+                                config=default_config
+                            )
+                            print("Model built with direct BPBreID import and default config")
+                        except Exception as direct_error:
+                            print(f"Direct BPBreID import failed: {direct_error}")
+                            # If that still fails, try without any config
+                            print("Trying without config parameter...")
+                            model = bpbreid(
+                                num_classes=751,
+                                loss='part_based',
+                                pretrained=True
+                            )
+                            print("Model built with direct BPBreID import without config")
+                    
+                    except ImportError as import_error:
+                        print(f"BPBreID model not available: {import_error}")
+                        print("Available models in torchreid:")
+                        try:
+                            from torchreid.models import show_avai_models
+                            show_avai_models()
+                        except:
+                            print("Could not show available models")
+                        
+                        # As a last resort, try to use a different model
+                        print("Trying to use alternative model (resnet50)...")
+                        try:
+                            model = torchreid.models.build_model(
+                                name='resnet50',
+                                num_classes=751,
+                                loss='softmax',
+                                pretrained=True,
+                                use_gpu=self.device.type == 'cuda'
+                            )
+                            print("Using resnet50 as fallback (note: this won't have BPBreID features)")
+                        except Exception as fallback_error:
+                            print(f"Fallback model also failed: {fallback_error}")
+                            raise e
                 else:
                     raise e
             
