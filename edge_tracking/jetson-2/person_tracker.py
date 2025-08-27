@@ -613,54 +613,58 @@ class PersonTracker:
             history = self.load_history()
             print(f"History entries available: {len(history) if history is not None else 0}")
 
-            # Find the best match in history (only if history exists and is not None)
+            # Ensure history is always a dictionary
+            if history is None:
+                history = {}
+                print("History was None, initialized empty dictionary")
+
+            # Find the best match in history
             best_match = None
             best_dist = float('inf')
 
-            # Check against history (only if history exists)
-            if history is not None:
-                for hist_id, hist_data in history.items():
-                    # Filter based on size similarity
-                    hist_box = hist_data["bbox"]
-                    curr_box = boxes[j]
+            # Check against history
+            for hist_id, hist_data in history.items():
+                # Filter based on size similarity
+                hist_box = hist_data["bbox"]
+                curr_box = boxes[j]
 
-                    # Compare box aspect ratios
-                    hist_ratio = hist_box[2] / max(hist_box[3], 1)
-                    curr_ratio = curr_box[2] / max(curr_box[3], 1)
+                # Compare box aspect ratios
+                hist_ratio = hist_box[2] / max(hist_box[3], 1)
+                curr_ratio = curr_box[2] / max(curr_box[3], 1)
 
-                    # Skip if aspect ratios are too different
-                    if abs(hist_ratio - curr_ratio) > 0.7:
-                        continue
+                # Skip if aspect ratios are too different
+                if abs(hist_ratio - curr_ratio) > 0.7:
+                    continue
 
-                    # Compare areas
-                    hist_area = hist_box[2] * hist_box[3]
-                    curr_area = curr_box[2] * curr_box[3]
-                    area_ratio = max(hist_area, curr_area) / max(min(hist_area, curr_area), 1)
+                # Compare areas
+                hist_area = hist_box[2] * hist_box[3]
+                curr_area = curr_box[2] * curr_box[3]
+                area_ratio = max(hist_area, curr_area) / max(min(hist_area, curr_area), 1)
 
-                    # Skip if size difference is too large
-                    if area_ratio > 7:
-                        continue
+                # Skip if size difference is too large
+                if area_ratio > 7:
+                    continue
 
-                    # Calculate feature distance for appearance matching
-                    single_feature_list = [features_list[j]]
-                    result = self._calculate_feature_distances_vectorized(hist_data["features"], single_feature_list)
+                # Calculate feature distance for appearance matching
+                single_feature_list = [features_list[j]]
+                result = self._calculate_feature_distances_vectorized(hist_data["features"], single_feature_list)
 
-                    # Extract distance value
-                    if isinstance(result, tuple):
-                        valid_indices, combined_distances = result
-                        if len(combined_distances) > 0:
-                            feature_dist = float(combined_distances[0])
-                        else:
-                            feature_dist = float('inf')
-                    elif isinstance(result, (list, np.ndarray)):
-                        feature_dist = float(result[0])
+                # Extract distance value
+                if isinstance(result, tuple):
+                    valid_indices, combined_distances = result
+                    if len(combined_distances) > 0:
+                        feature_dist = float(combined_distances[0])
                     else:
-                        feature_dist = float(result)
+                        feature_dist = float('inf')
+                elif isinstance(result, (list, np.ndarray)):
+                    feature_dist = float(result[0])
+                else:
+                    feature_dist = float(result)
 
-                    # Threshold for reappearances
-                    if feature_dist < best_dist and feature_dist < self.reidentification_threshold:
-                        best_dist = feature_dist
-                        best_match = hist_id
+                # Threshold for reappearances
+                if feature_dist < best_dist and feature_dist < self.reidentification_threshold:
+                    best_dist = feature_dist
+                    best_match = hist_id
 
             # Apply the best match if found in history
             if best_match is not None:
@@ -673,8 +677,8 @@ class PersonTracker:
                 }
                 print(f"Re-identified person ID {best_match} from history, distance={best_dist:.4f}")
 
-                # Remove from history file (only if history exists)
-                if history is not None and best_match in history:
+                # Remove from history file
+                if best_match in history:
                     del history[best_match]
                     self.save_history(history)
 
