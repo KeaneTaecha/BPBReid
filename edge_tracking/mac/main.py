@@ -95,39 +95,6 @@ def main():
                     if ptz_camera.tracking_enabled and ptz_camera.target_id == person_id:
                         cv2.rectangle(frame, (x-5, y-5), (x + w + 5, y + h + 5), (0, 255, 255), 2)
 
-                    # Check if this is the gallery person
-                    is_gallery = person_data.get("is_gallery", False) or person_id == 0
-                    
-                    # Draw filled transparent rectangle on overlay
-                    cv2.rectangle(overlay, (x, y), (x + w, y + h), action_color, -1)
-                    
-                    # Choose color based on whether it's gallery person
-                    if is_gallery:
-                        # Special color for gallery person
-                        id_color = (0, 255, 255)  # Yellow for gallery person
-                        box_thickness = 8  # Thicker box
-                    else:
-                        id_color = (int(colors[person_id % 100][0]),
-                                int(colors[person_id % 100][1]),
-                                int(colors[person_id % 100][2]))
-                        box_thickness = 6
-                    
-                    # Draw box with ID
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), id_color, box_thickness)
-                    
-                    # Add label with special indicator for gallery person
-                    if is_gallery:
-                        label_text = f"GALLERY ID: {person_id} - {action}"
-                    else:
-                        label_text = f"ID: {person_id} - {action}"
-                    
-                    cv2.putText(frame, label_text, (x, y - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, id_color, 2)
-                    
-                    # Highlight tracked person (existing code)
-                    if ptz_camera.tracking_enabled and ptz_camera.target_id == person_id:
-                        cv2.rectangle(frame, (x-5, y-5), (x + w + 5, y + h + 5), (0, 255, 255), 2)
-
                 # Blend overlay with original frame (30% transparency)
                 alpha = 0.3
                 frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
@@ -292,15 +259,6 @@ def main():
 
                         ptz_camera.tracking_enabled = True
                         print(f"Now tracking person ID: {ptz_camera.target_id}")
-
-                elif key_masked == ord('g'):
-                    # Select gallery person as target if present
-                    if 0 in tracked_persons:  # Gallery person has ID 0
-                        ptz_camera.target_id = 0
-                        ptz_camera.tracking_enabled = True
-                        print("Now tracking gallery person (ID: 0)")
-                    else:
-                        print("Gallery person not currently detected")
 
         finally:
             # Save all currently tracked persons to history before closing
