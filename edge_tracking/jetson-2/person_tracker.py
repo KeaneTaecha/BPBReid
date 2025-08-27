@@ -183,6 +183,10 @@ class PersonTracker:
     def save_history(self, history):
         """Save history to file"""
         try:
+            # Ensure history is a dictionary before saving
+            if history is None:
+                history = {}
+                
             with open(self.history_file, 'wb') as f:
                 pickle.dump(history, f)
             print(f"History saved to {self.history_file}")
@@ -680,6 +684,7 @@ class PersonTracker:
                 self.register(centroids[j], boxes[j], features_list[j])
                 print(f"Registered new person with ID {self.next_id-1}")
                 used_detections.add(j)
+
 
     def register(self, centroid, bbox, features):
       """Register a new person"""
