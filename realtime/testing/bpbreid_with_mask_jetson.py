@@ -143,23 +143,30 @@ class ImprovedBPBreIDYOLOMaskedReID:
         return config
     
     def _load_corrected_model(self):
-        """Load BPBreID model with corrected loading (compatible with Jetson)"""
+        """Load BPBreID model with corrected loading (Jetson compatible)"""
         print("Loading corrected BPBreid model...")
         
         try:
-            # Directly import and instantiate the BPBreID model
-            from torchreid.models import BPBreID
+            # Add the BPBReid path to sys.path to import the model directly
+            import sys
+            bpbreid_path = '/workspace/BPBReid'
+            if bpbreid_path not in sys.path:
+                sys.path.insert(0, bpbreid_path)
             
-            # Create model instance directly
+            # Now import the BPBreID model directly from the file
+            from torchreid.models.bpbreid import BPBreID
+            
             print("Creating BPBreID model instance...")
+            
+            # Create model with configuration
             model = BPBreID(
                 num_classes=751,
+                config=self.config,
                 loss='softmax',
-                pretrained=False,
-                config=self.config
+                pretrained=False
             )
             
-            # Load weights
+            # Load the pretrained weights
             print(f"Loading weights from: {self.config.model.load_weights}")
             checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)
             
@@ -192,18 +199,36 @@ class ImprovedBPBreIDYOLOMaskedReID:
             print("Corrected BPBreid model loaded successfully")
             return model
             
-        except ImportError:
-            # If direct import fails, try alternative approach
-            print("Direct import failed, trying alternative loading method...")
+        except ImportError as e:
+            print(f"Import error: {e}")
+            print("Trying alternative import method...")
+            
             try:
-                # Try loading without config parameter
-                model = torchreid.models.build_model(
-                    name='bpbreid',
+                # Alternative: Try to manually register the model
+                import sys
+                sys.path.insert(0, '/workspace/BPBReid')
+                
+                # Import the file as a module
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(
+                    "bpbreid_module", 
+                    "/workspace/BPBReid/torchreid/models/bpbreid.py"
+                )
+                bpbreid_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(bpbreid_module)
+                
+                # Get the BPBreID class
+                BPBreID = bpbreid_module.BPBreID
+                
+                print("Creating BPBreID model with alternative method...")
+                model = BPBreID(
                     num_classes=751,
+                    config=self.config,
+                    loss='softmax',
                     pretrained=False
                 )
                 
-                # Load weights manually
+                # Load weights
                 checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)
                 
                 if 'state_dict' in checkpoint:
@@ -223,12 +248,12 @@ class ImprovedBPBreIDYOLOMaskedReID:
                 model = model.to(self.device)
                 model.eval()
                 
-                print("Model loaded using alternative method")
+                print("Model loaded using alternative import method")
                 return model
                 
             except Exception as e2:
-                print(f"Alternative loading also failed: {e2}")
-                raise e2
+                print(f"Alternative method also failed: {e2}")
+                raise RuntimeError(f"Could not load BPBreID model. Error: {e2}")
                 
         except Exception as e:
             print(f"Error loading corrected BPBreid model: {e}")
