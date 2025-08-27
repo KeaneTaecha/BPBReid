@@ -381,13 +381,22 @@ class PersonTracker:
         # Convert to numpy arrays if they aren't already
         person_features = np.array(person_features)
         features_array = np.array(valid_features)
-
-        # Ensure features_array is 2D even for single feature
+        
+        # Ensure arrays have the correct shape and are not empty
+        if person_features.size == 0 or features_array.size == 0:
+            return [], []
+        
+        # Ensure features_array is 2D
         if features_array.ndim == 1:
             features_array = features_array.reshape(1, -1)
 
         # Extract color histogram and HOG portions
         color_length = 12**3 * 3
+        
+        # Check if features have the expected dimensions
+        if person_features.size < color_length or features_array.shape[1] < color_length:
+            print(f"Feature dimensions too small: person_features={person_features.size}, features_array={features_array.shape}")
+            return [], []
 
         # Extract components for all features at once
         hist_person = person_features[:color_length]
@@ -408,8 +417,13 @@ class PersonTracker:
         hog_dists = hog_dists / (np.sqrt(len(hog_person)) + epsilon)
 
         # Adaptive weighting (simplified for vectorization)
-        hist_vars = np.var(hist_detections, axis=1) + np.var(hist_person)
-        color_weights = np.where(hist_vars < 0.05, 0.3, 0.6)
+        # Handle single feature case to avoid 0-dimensional array issues
+        if hist_detections.shape[0] == 1:
+            hist_vars = np.var(hist_detections.flatten()) + np.var(hist_person)
+            color_weights = np.array([0.3 if hist_vars < 0.05 else 0.6])
+        else:
+            hist_vars = np.var(hist_detections, axis=1) + np.var(hist_person)
+            color_weights = np.where(hist_vars < 0.05, 0.3, 0.6)
         hog_weights = 1.0 - color_weights
 
         # Calculate combined distances
@@ -642,19 +656,23 @@ class PersonTracker:
 
                 # Calculate feature distance for appearance matching
                 single_feature_list = [features_list[j]]
-                result = self._calculate_feature_distances_vectorized(hist_data["features"], single_feature_list)
+                try:
+                    result = self._calculate_feature_distances_vectorized(hist_data["features"], single_feature_list)
 
-                # Extract distance value
-                if isinstance(result, tuple):
-                    valid_indices, combined_distances = result
-                    if len(combined_distances) > 0:
-                        feature_dist = float(combined_distances[0])
+                    # Extract distance value
+                    if isinstance(result, tuple):
+                        valid_indices, combined_distances = result
+                        if len(combined_distances) > 0:
+                            feature_dist = float(combined_distances[0])
+                        else:
+                            feature_dist = float('inf')
+                    elif isinstance(result, (list, np.ndarray)):
+                        feature_dist = float(result[0])
                     else:
-                        feature_dist = float('inf')
-                elif isinstance(result, (list, np.ndarray)):
-                    feature_dist = float(result[0])
-                else:
-                    feature_dist = float(result)
+                        feature_dist = float(result)
+                except Exception as e:
+                    print(f"Error calculating feature distance: {e}")
+                    feature_dist = float('inf')
 
                 # Threshold for reappearances
                 if feature_dist < best_dist and feature_dist < self.reidentification_threshold:
