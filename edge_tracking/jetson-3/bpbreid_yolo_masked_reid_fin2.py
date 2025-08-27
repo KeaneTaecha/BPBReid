@@ -146,8 +146,9 @@ class ImprovedBPBreIDYOLOMaskedReID:
         print("Loading corrected BPBreid model...")
         
         try:
-            # Access bpbreid function directly from torchreid.models
-            model = torchreid.models.bpbreid(
+            # Import bpbreid function directly from the bpbreid module
+            import torchreid.models.bpbreid as bpbreid_module
+            model = bpbreid_module.bpbreid(
                 num_classes=751,
                 loss='part_based',
                 pretrained=True,
