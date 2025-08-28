@@ -579,12 +579,19 @@ class BatchMask:
             image_size = results[0]["instances"].image_size
             pred_boxes, scores, pred_classes, pred_masks = results[0]["instances"].get_fields().values()
             if len(pred_masks) == 0:
-                raise Exception("Error: Pifpaf model did not return any masks!")
+                raise Exception("Error: MaskRCNN model did not return any masks!")
 
             # Filter out all masks that are not person
-            filtered_boxes, filtered_masks = zip(
-                *[(box.cpu().numpy(), mask.cpu().numpy()) for box, mask, cls in
-                  zip(pred_boxes, pred_masks, pred_classes) if cls == 0])
+            person_masks = [(box.cpu().numpy(), mask.cpu().numpy()) for box, mask, cls in
+                           zip(pred_boxes, pred_masks, pred_classes) if cls == 0]
+            
+            if len(person_masks) == 0:
+                # If no person masks found, create a default mask (all ones)
+                height, width = image_size
+                default_mask = np.ones((height, width), dtype=np.uint8)
+                return [default_mask]
+
+            filtered_boxes, filtered_masks = zip(*person_masks)
 
             # Order the masks by bbox distance to the center of the image
             distances = order_bbox(image_size, filtered_boxes)
