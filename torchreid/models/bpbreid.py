@@ -334,7 +334,7 @@ class AfterPoolingDimReduceLayer(nn.Module):
         layers.append(nn.BatchNorm1d(output_dim))
         layers.append(nn.ReLU(inplace=True))
         if dropout_p is not None:
-            layers.append(nn.Dropout(p=dropout_p))
+            layers.append(nn.opout(p=dropout_p))
 
         self.layers = nn.Sequential(*layers)
         self._init_params()
@@ -525,7 +525,7 @@ def pcb(num_classes, loss='part_based', pretrained=True, config=None, **kwargs):
         pretrained,
         loss,
         config.model.bpbreid,
-        horizontal_stripes=True,
+        horizontal_stipes=True,
         config=config,
         **kwargs
     )
@@ -540,7 +540,7 @@ def bot(num_classes, loss='part_based', pretrained=True, config=None, **kwargs):
         pretrained,
         loss,
         config.model.bpbreid,
-        horizontal_stripes=True,
+        horizontal_stipes=True,
         config=config,
         **kwargs
     )

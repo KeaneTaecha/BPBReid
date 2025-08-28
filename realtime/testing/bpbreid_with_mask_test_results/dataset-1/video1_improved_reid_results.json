@@ -1,10 +1,10 @@
 {
-  "timestamp": "2025-08-27T19:16:18.971122",
+  "timestamp": "2025-08-28T12:48:20.973181",
   "video_path": "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets/Compare/dataset-1/correct.MOV",
   "gallery_path": "/Users/kunanonttaechaaukarkaul/Documents/CMKL/UB Internship/PTZCamera/reid/bpbreid/datasets/Compare/dataset-1/gallery-person.jpg",
   "total_frames": 314,
-  "frames_with_detection": 24,
-  "frames_with_match": 24,
+  "frames_with_detection": 9,
+  "frames_with_match": 9,
   "frames_without_match": 0,
   "similarity_scores": [
     0.6215738654136658,
@@ -15,22 +15,7 @@
     0.6579399704933167,
     0.6270948052406311,
     0.6469058394432068,
-    0.6231305003166199,
-    0.6124550104141235,
-    0.6277880668640137,
-    0.5901320576667786,
-    0.613533616065979,
-    0.6117125749588013,
-    0.6182145476341248,
-    0.6092422008514404,
-    0.6218225955963135,
-    0.5854593515396118,
-    0.5920311212539673,
-    0.6010883450508118,
-    0.5812346339225769,
-    0.6028467416763306,
-    0.6038311719894409,
-    0.5777592658996582
+    0.6231305003166199
   ],
   "reid_threshold": 0.46
 }
