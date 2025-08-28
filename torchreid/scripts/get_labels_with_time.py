@@ -191,7 +191,7 @@ class BatchPifPaf:
         print(f"* OpenPifPaf model ->  {model_name}")
         # Define the OpenPifPaf model
         self.model = openpifpaf.Predictor(checkpoint=model_name, visualize_image=True, visualize_processed_image=True)
-        self.batch_size = batch_size if batch_size else self.model.batch_size
+        self.batch_size = batch_size if batch_size else 1
         self.workers = workers if workers else self.model.loader_workers if self.model.loader_workers is not None else 0
         self.__collate = openpifpaf.datasets.collate_images_anns_meta
         
@@ -359,8 +359,8 @@ class BatchMask:
         self.cfg = build_config_maskrcnn(cfg) if isinstance(cfg, str) else cfg.clone()
         print(f"* MaskRCNN model ->  {cfg if isinstance(cfg, str) else self.cfg.MODEL.WEIGHTS}")
 
-        # Set the batch size for processing images, defaulting to 32 if not provided
-        self.batch_size = batch_size if batch_size else 32
+        # Set the batch size for processing images, defaulting to 1 if not provided
+        self.batch_size = batch_size if batch_size else 1
 
         # Set the number of worker processes for data loading, defaulting to the number of CPU cores
         self.workers = workers if workers is not None else 0
