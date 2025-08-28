@@ -143,31 +143,19 @@ class ImprovedBPBreIDYOLOMaskedReID:
         return config
     
     def _load_corrected_model(self):
-        """Load BPBreID model with corrected loading (Jetson compatible)"""
+        """Load BPBreID model with corrected loading (from corrected version)"""
         print("Loading corrected BPBreid model...")
         
         try:
-            # Add the BPBReid path to sys.path to import the model directly
-            import sys
-            bpbreid_path = '/workspace/BPBReid'
-            if bpbreid_path not in sys.path:
-                sys.path.insert(0, bpbreid_path)
-            
-            # Now import the BPBreID model directly from the file
-            from torchreid.models.bpbreid import BPBreID
-            
-            print("Creating BPBreID model instance...")
-            
-            # Create model with configuration
-            model = BPBreID(
+            # Build model with original configuration
+            model = torchreid.models.build_model(
+                name='bpbreid',
                 num_classes=751,
                 config=self.config,
-                loss='softmax',
-                pretrained=False
+                pretrained=True
             )
             
-            # Load the pretrained weights
-            print(f"Loading weights from: {self.config.model.load_weights}")
+            # Load weights
             checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)
             
             # Handle state dict
@@ -187,74 +175,12 @@ class ImprovedBPBreIDYOLOMaskedReID:
             # Load state dict with strict=False
             missing_keys, unexpected_keys = model.load_state_dict(new_state_dict, strict=False)
             
-            # Only print warnings if there are significant missing keys
-            if missing_keys and len(missing_keys) > 10:
-                print(f"Warning: {len(missing_keys)} missing keys when loading model")
-            if unexpected_keys and len(unexpected_keys) > 10:
-                print(f"Warning: {len(unexpected_keys)} unexpected keys when loading model")
-            
             model = model.to(self.device)
             model.eval()
             
             print("Corrected BPBreid model loaded successfully")
             return model
             
-        except ImportError as e:
-            print(f"Import error: {e}")
-            print("Trying alternative import method...")
-            
-            try:
-                # Alternative: Try to manually register the model
-                import sys
-                sys.path.insert(0, '/workspace/BPBReid')
-                
-                # Import the file as a module
-                import importlib.util
-                spec = importlib.util.spec_from_file_location(
-                    "bpbreid_module", 
-                    "/workspace/BPBReid/torchreid/models/bpbreid.py"
-                )
-                bpbreid_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(bpbreid_module)
-                
-                # Get the BPBreID class
-                BPBreID = bpbreid_module.BPBreID
-                
-                print("Creating BPBreID model with alternative method...")
-                model = BPBreID(
-                    num_classes=751,
-                    config=self.config,
-                    loss='softmax',
-                    pretrained=False
-                )
-                
-                # Load weights
-                checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)
-                
-                if 'state_dict' in checkpoint:
-                    state_dict = checkpoint['state_dict']
-                else:
-                    state_dict = checkpoint
-                
-                # Remove 'module.' prefix if present
-                new_state_dict = {}
-                for k, v in state_dict.items():
-                    if k.startswith('module.'):
-                        new_state_dict[k[7:]] = v
-                    else:
-                        new_state_dict[k] = v
-                
-                model.load_state_dict(new_state_dict, strict=False)
-                model = model.to(self.device)
-                model.eval()
-                
-                print("Model loaded using alternative import method")
-                return model
-                
-            except Exception as e2:
-                print(f"Alternative method also failed: {e2}")
-                raise RuntimeError(f"Could not load BPBreID model. Error: {e2}")
-                
         except Exception as e:
             print(f"Error loading corrected BPBreid model: {e}")
             raise e
