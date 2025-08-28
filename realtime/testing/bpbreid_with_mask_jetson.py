@@ -147,13 +147,28 @@ class ImprovedBPBreIDYOLOMaskedReID:
         print("Loading corrected BPBreid model...")
         
         try:
-            # Build model with original configuration
-            model = torchreid.models.build_model(
-                name='bpbreid',
-                num_classes=751,
-                config=self.config,
-                pretrained=True
-            )
+            # Try building model with config parameter first (newer version)
+            try:
+                model = torchreid.models.build_model(
+                    name='bpbreid',
+                    num_classes=751,
+                    config=self.config,
+                    pretrained=True
+                )
+                print("Model built with config parameter (newer version)")
+            except (TypeError, KeyError) as e:
+                # Fallback for older torchreid versions that don't support config parameter
+                print("Config parameter not supported, using fallback method...")
+                
+                # Import bpbreid directly and build with config
+                from torchreid.models.bpbreid import bpbreid
+                model = bpbreid(
+                    num_classes=751,
+                    loss='part_based',
+                    pretrained=True,
+                    config=self.config
+                )
+                print("Model built with direct bpbreid import (fallback method)")
             
             # Load weights
             checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)
