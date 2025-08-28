@@ -579,7 +579,10 @@ class BatchMask:
             image_size = results[0]["instances"].image_size
             pred_boxes, scores, pred_classes, pred_masks = results[0]["instances"].get_fields().values()
             if len(pred_masks) == 0:
-                raise Exception("Error: MaskRCNN model did not return any masks!")
+                # If no masks returned at all, create a default mask (all ones)
+                height, width = image_size
+                default_mask = np.ones((height, width), dtype=np.uint8)
+                return [default_mask]
 
             # Filter out all masks that are not person
             person_masks = [(box.cpu().numpy(), mask.cpu().numpy()) for box, mask, cls in
