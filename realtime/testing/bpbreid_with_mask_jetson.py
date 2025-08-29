@@ -160,15 +160,39 @@ class ImprovedBPBreIDYOLOMaskedReID:
                 # Fallback for older torchreid versions that don't support config parameter
                 print("Config parameter not supported, using fallback method...")
                 
-                # Import bpbreid directly and build with config
-                from torchreid.models.bpbreid import bpbreid
-                model = bpbreid(
-                    num_classes=751,
-                    loss='part_based',
-                    pretrained=True,
-                    config=self.config
-                )
-                print("Model built with direct bpbreid import (fallback method)")
+                # Try importing bpbreid directly and build with config
+                try:
+                    from torchreid.models.bpbreid import bpbreid
+                    model = bpbreid(
+                        num_classes=751,
+                        loss='part_based',
+                        pretrained=True,
+                        config=self.config
+                    )
+                    print("Model built with direct bpbreid import (fallback method)")
+                except ImportError as import_error:
+                    print(f"BPBreID model not available: {import_error}")
+                    print("Available models in torchreid:")
+                    try:
+                        from torchreid.models import show_avai_models
+                        show_avai_models()
+                    except:
+                        print("Could not show available models")
+                    
+                    # As a last resort, try to use a different model
+                    print("Trying to use alternative model (resnet50)...")
+                    try:
+                        model = torchreid.models.build_model(
+                            name='resnet50',
+                            num_classes=751,
+                            loss='softmax',
+                            pretrained=True,
+                            use_gpu=self.device.type == 'cuda'
+                        )
+                        print("Using resnet50 as fallback (note: this won't have BPBreID features)")
+                    except Exception as fallback_error:
+                        print(f"Fallback model also failed: {fallback_error}")
+                        raise import_error
             
             # Load weights
             checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)

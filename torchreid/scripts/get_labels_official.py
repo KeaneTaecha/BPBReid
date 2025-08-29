@@ -580,6 +580,7 @@ class BatchMask:
             pred_boxes, scores, pred_classes, pred_masks = results[0]["instances"].get_fields().values()
             if len(pred_masks) == 0:
                 # If no masks returned at all, create a default mask (all ones)
+                print("No objects detected in the frame")
                 height, width = image_size
                 default_mask = np.ones((height, width), dtype=np.uint8)
                 return [default_mask]
@@ -590,6 +591,7 @@ class BatchMask:
             
             if len(person_masks) == 0:
                 # If no person masks found, create a default mask (all ones)
+                print("No person detected in the frame")
                 height, width = image_size
                 default_mask = np.ones((height, width), dtype=np.uint8)
                 return [default_mask]
