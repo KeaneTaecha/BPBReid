@@ -144,7 +144,4 @@ debug*
 
 # Dataset folders
 datasets/
-
-realtime/testing/bpbreid_with_mask_test_results/
-realtime/testing/osnet_test_results/
-realtime/testing/reid_no_mask_test_results/
+faster_masking/results/

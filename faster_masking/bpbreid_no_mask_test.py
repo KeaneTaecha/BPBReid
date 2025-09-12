@@ -622,299 +622,16 @@ class EnhancedPersonReIDTester:
         except Exception as e:
             print(f"Error generating plots: {e}")
     
-    def run_camera_test_mode(self):
-        """Run real-time ReID in test mode with enhanced feedback"""
-        cap = cv2.VideoCapture(0)
-        
-        cv2.namedWindow('Enhanced ReID Test Mode', cv2.WINDOW_NORMAL)
-        
-        print("\nEnhanced Test Mode Controls:")
-        print("- Press 'q' to quit")
-        print("- Press 's' to save current detections to gallery")
-        print("- Press 'c' to clear gallery")
-        print("- Press 'g' to show gallery")
-        print("- Press 't' to adjust threshold")
-        
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            annotated_frame, frame_result = self.process_frame(frame)
-            
-            # Enhanced status information
-            status_text = f"Gallery: {len(self.gallery_ids)} | Threshold: {self.reid_threshold:.2f}"
-            cv2.putText(annotated_frame, status_text, (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            
-            # Show detection count
-            detection_text = f"Detections: {len(frame_result['detections'])}"
-            cv2.putText(annotated_frame, detection_text, (10, 60), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            
-            # Show best similarity if available
-            if frame_result['similarities']:
-                best_sim = max(frame_result['similarities'])
-                sim_text = f"Best Similarity: {best_sim:.3f}"
-                cv2.putText(annotated_frame, sim_text, (10, 90), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            
-            cv2.imshow('Enhanced ReID Test Mode', annotated_frame)
-            
-            key = cv2.waitKey(1) & 0xFF
-            
-            if key == ord('q'):
-                break
-            elif key == ord('s'):
-                self._save_current_detections(frame)
-            elif key == ord('c'):
-                self.gallery_features = []
-                self.gallery_ids = []
-                self.gallery_images = []
-                print("Gallery cleared!")
-            elif key == ord('g'):
-                self._show_gallery()
-            elif key == ord('t'):
-                self._adjust_threshold()
-        
-        cap.release()
-        cv2.destroyAllWindows()
-    
-    def _save_current_detections(self, frame):
-        """Save current detections to gallery (enhanced version)"""
-        results = self.yolo(frame, classes=0, conf=0.5)
-        
-        new_persons_added = 0
-        for r in results:
-            boxes = r.boxes
-            if boxes is not None:
-                for box in boxes:
-                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
-                    person_img = frame[y1:y2, x1:x2]
-                    
-                    if person_img.size > 0:
-                        features = self.extract_features(person_img)
-                        matched_id, similarity = self.match_person(features)
-                        
-                        if matched_id is None:
-                            # New person, add to gallery
-                            self.add_to_gallery(features, self.next_person_id, person_img)
-                            print(f"Added Person {self.next_person_id} to gallery (similarity: {similarity:.3f})")
-                            self.next_person_id += 1
-                            new_persons_added += 1
-                        else:
-                            print(f"Person {matched_id} already in gallery (similarity: {similarity:.3f})")
-        
-        if new_persons_added == 0:
-            print("No new persons detected to add to gallery")
-    
-    def _show_gallery(self):
-        """Display gallery in a separate window (enhanced version)"""
-        if len(self.gallery_images) == 0:
-            print("Gallery is empty!")
-            return
-        
-        # Create gallery visualization
-        gallery_height = 200
-        gallery_width = 150
-        cols = min(6, len(self.gallery_images))
-        rows = (len(self.gallery_images) + cols - 1) // cols
-        
-        gallery_viz = np.zeros((rows * gallery_height, cols * gallery_width, 3), dtype=np.uint8)
-        
-        for idx, (img, person_id) in enumerate(zip(self.gallery_images, self.gallery_ids)):
-            row = idx // cols
-            col = idx % cols
-            
-            # Resize image
-            resized = cv2.resize(img, (gallery_width, gallery_height))
-            
-            # Place in gallery
-            y1 = row * gallery_height
-            y2 = (row + 1) * gallery_height
-            x1 = col * gallery_width
-            x2 = (col + 1) * gallery_width
-            gallery_viz[y1:y2, x1:x2] = resized
-            
-            # Add label with enhanced info
-            cv2.putText(gallery_viz, f"Person {person_id}", (x1 + 5, y1 + 20),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            
-            # Add feature dimension info
-            feature_dim = self.gallery_features[idx].shape[1] if idx < len(self.gallery_features) else "Unknown"
-            cv2.putText(gallery_viz, f"Dim: {feature_dim}", (x1 + 5, y1 + 40),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (200, 200, 200), 1)
-        
-        # Add gallery info at the bottom
-        info_text = f"Gallery: {len(self.gallery_ids)} persons | Threshold: {self.reid_threshold:.2f}"
-        cv2.putText(gallery_viz, info_text, (10, gallery_viz.shape[0] - 10),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-        
-        cv2.imshow('Gallery', gallery_viz)
-        print(f"Showing gallery with {len(self.gallery_ids)} persons")
-        cv2.waitKey(0)
-        cv2.destroyWindow('Gallery')
-    
-    def _adjust_threshold(self):
-        """Adjust ReID threshold interactively"""
-        print(f"\nCurrent threshold: {self.reid_threshold:.2f}")
-        try:
-            new_threshold = float(input("Enter new threshold (0.0-1.0): "))
-            if 0.0 <= new_threshold <= 1.0:
-                self.reid_threshold = new_threshold
-                print(f"Threshold updated to: {self.reid_threshold:.2f}")
-            else:
-                print("Threshold must be between 0.0 and 1.0")
-        except ValueError:
-            print("Invalid input. Please enter a number.")
-    
-    def benchmark_performance(self, test_images_dir, iterations=5):
-        """Benchmark feature extraction performance"""
-        print("\n" + "="*50)
-        print("PERFORMANCE BENCHMARK")
-        print("="*50)
-        
-        if not os.path.exists(test_images_dir):
-            print(f"Test images directory not found: {test_images_dir}")
-            return
-        
-        # Get test images
-        image_files = [f for f in os.listdir(test_images_dir) 
-                      if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
-        
-        if not image_files:
-            print(f"No image files found in {test_images_dir}")
-            return
-        
-        print(f"Testing with {len(image_files)} images, {iterations} iterations each")
-        
-        total_times = []
-        detection_times = []
-        feature_extraction_times = []
-        
-        for iteration in range(iterations):
-            print(f"\nIteration {iteration + 1}/{iterations}")
-            
-            for img_file in image_files[:5]:  # Test with first 5 images
-                img_path = os.path.join(test_images_dir, img_file)
-                image = cv2.imread(img_path)
-                
-                if image is None:
-                    continue
-                
-                # Time detection
-                start_time = time.time()
-                results = self.yolo(image, classes=0, conf=0.5)
-                detection_time = time.time() - start_time
-                detection_times.append(detection_time)
-                
-                # Time feature extraction for each detection
-                for r in results:
-                    boxes = r.boxes
-                    if boxes is not None:
-                        for box in boxes:
-                            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
-                            person_img = image[y1:y2, x1:x2]
-                            
-                            if person_img.size > 0:
-                                start_time = time.time()
-                                features = self.extract_features(person_img)
-                                feature_time = time.time() - start_time
-                                feature_extraction_times.append(feature_time)
-                                
-                                total_time = detection_time + feature_time
-                                total_times.append(total_time)
-                                break  # Only test first detection per image
-        
-        # Print results
-        if total_times:
-            print(f"\nBenchmark Results:")
-            print(f"Total Processing Time - Avg: {np.mean(total_times)*1000:.2f}ms, "
-                  f"Min: {np.min(total_times)*1000:.2f}ms, Max: {np.max(total_times)*1000:.2f}ms")
-            print(f"Detection Time - Avg: {np.mean(detection_times)*1000:.2f}ms")
-            print(f"Feature Extraction Time - Avg: {np.mean(feature_extraction_times)*1000:.2f}ms")
-            print(f"Estimated FPS: {1/np.mean(total_times):.1f}")
-        else:
-            print("No valid detections found for benchmarking")
-    
-    def export_gallery(self, output_path="gallery_export.json"):
-        """Export gallery data to JSON file"""
-        if len(self.gallery_features) == 0:
-            print("Gallery is empty, nothing to export")
-            return
-        
-        export_data = {
-            'timestamp': datetime.now().isoformat(),
-            'reid_threshold': self.reid_threshold,
-            'gallery_size': len(self.gallery_ids),
-            'persons': []
-        }
-        
-        for i, person_id in enumerate(self.gallery_ids):
-            person_data = {
-                'id': person_id,
-                'feature_dim': self.gallery_features[i].shape[1],
-                'features': self.gallery_features[i].cpu().numpy().tolist()
-            }
-            export_data['persons'].append(person_data)
-        
-        with open(output_path, 'w') as f:
-            json.dump(export_data, f, indent=2)
-        
-        print(f"Gallery exported to: {output_path}")
-    
-    def import_gallery(self, input_path="gallery_export.json"):
-        """Import gallery data from JSON file"""
-        if not os.path.exists(input_path):
-            print(f"Gallery file not found: {input_path}")
-            return False
-        
-        try:
-            with open(input_path, 'r') as f:
-                import_data = json.load(f)
-            
-            # Clear current gallery
-            self.gallery_features = []
-            self.gallery_ids = []
-            self.gallery_images = []
-            
-            # Import persons
-            for person_data in import_data['persons']:
-                person_id = person_data['id']
-                features_list = person_data['features']
-                
-                # Convert back to tensor
-                features_tensor = torch.tensor(features_list, device=self.device)
-                
-                self.gallery_features.append(features_tensor)
-                self.gallery_ids.append(person_id)
-                self.gallery_images.append(np.zeros((100, 100, 3), dtype=np.uint8))  # Placeholder
-            
-            # Update next person ID
-            self.next_person_id = max(self.gallery_ids) + 1 if self.gallery_ids else 1
-            
-            # Update threshold if available
-            if 'reid_threshold' in import_data:
-                self.reid_threshold = import_data['reid_threshold']
-            
-            print(f"Gallery imported: {len(self.gallery_ids)} persons")
-            print(f"Threshold set to: {self.reid_threshold}")
-            return True
-            
-        except Exception as e:
-            print(f"Error importing gallery: {e}")
-            return False
 
 
 def main():
-    """Main function to run the enhanced test suite"""
+    """Main function to run the full video test suite"""
     print("Enhanced ReID Video Test Suite")
     print("=" * 50)
     
     # Get parent directory (one level up from current folder)
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    realtime_dir = os.path.dirname(current_dir)               
-    bpbreid_dir = os.path.dirname(realtime_dir) 
+    bpbreid_dir = os.path.dirname(current_dir) 
     
     # Configuration - paths relative to parent directory
     reid_model_path = os.path.join(bpbreid_dir, "pretrained_models", "bpbreid_market1501_hrnet32_10642.pth")
@@ -941,52 +658,23 @@ def main():
         print("Initializing Enhanced ReID test system...")
         tester = EnhancedPersonReIDTester(reid_model_path, hrnet_path)
         
-        print("\nChoose test mode:")
-        print("1. Full video test suite")
-        print("2. Real-time camera test mode")
-        print("3. Performance benchmark")
-        print("4. Interactive mode")
-        
-        choice = input("Enter choice (1-4): ").strip()
-        
-        if choice == "1":
-            # Full video test suite
-            if all(os.path.exists(p) for p in [gallery_image_path, video1_path, video2_path]):
-                results = tester.run_full_test(
-                    gallery_image_path=gallery_image_path,
-                    video1_path=video1_path,
-                    video2_path=video2_path,
-                    save_annotated=True,
-                    output_dir="reid_no_mask_test_results"
-                )
-                
-                if results:
-                    tester.generate_comparison_plots(results, "reid_no_mask_test_results")
-                    print("\nFull test completed successfully!")
-                else:
-                    print("Full test failed!")
+        # Run full video test suite
+        if all(os.path.exists(p) for p in [gallery_image_path, video1_path, video2_path]):
+            results = tester.run_full_test(
+                gallery_image_path=gallery_image_path,
+                video1_path=video1_path,
+                video2_path=video2_path,
+                save_annotated=True,
+                output_dir="results/reid_no_mask_test_results"
+            )
+            
+            if results:
+                tester.generate_comparison_plots(results, "results/reid_no_mask_test_results")
+                print("\nFull test completed successfully!")
             else:
-                print("Test files not found. Please check paths.")
-                
-        elif choice == "2":
-            # Real-time camera test mode
-            print("\nStarting real-time camera test mode...")
-            tester.run_camera_test_mode()
-            
-        elif choice == "3":
-            # Performance benchmark
-            test_images_dir = input("Enter test images directory path (or press Enter for default): ").strip()
-            if not test_images_dir:
-                test_images_dir = os.path.join(parent_dir, "datasets", "test_images")
-            
-            tester.benchmark_performance(test_images_dir)
-            
-        elif choice == "4":
-            # Interactive mode
-            interactive_mode(tester)
-            
+                print("Full test failed!")
         else:
-            print("Invalid choice. Exiting.")
+            print("Test files not found. Please check paths.")
             
     except Exception as e:
         print(f"Error running enhanced test: {e}")
@@ -994,119 +682,11 @@ def main():
         traceback.print_exc()
 
 
-def interactive_mode(tester):
-    """Interactive mode for testing various features"""
-    print("\n" + "="*50)
-    print("INTERACTIVE MODE")
-    print("="*50)
-    
-    while True:
-        print("\nAvailable commands:")
-        print("1. Load gallery image")
-        print("2. Test single video")
-        print("3. Test single image")
-        print("4. Show gallery")
-        print("5. Clear gallery")
-        print("6. Adjust threshold")
-        print("7. Export gallery")
-        print("8. Import gallery")
-        print("9. Performance benchmark")
-        print("10. Exit")
-        
-        choice = input("\nEnter command (1-10): ").strip()
-        
-        try:
-            if choice == "1":
-                img_path = input("Enter gallery image path: ").strip()
-                if os.path.exists(img_path):
-                    tester.add_gallery_image(img_path)
-                else:
-                    print("Image file not found!")
-                    
-            elif choice == "2":
-                video_path = input("Enter video path: ").strip()
-                if os.path.exists(video_path):
-                    expected = input("Should this video match gallery? (y/n): ").strip().lower() == 'y'
-                    save_output = input("Save annotated video? (y/n): ").strip().lower() == 'y'
-                    output_path = None
-                    if save_output:
-                        output_path = input("Enter output path (or press Enter for default): ").strip()
-                        if not output_path:
-                            output_path = "test_output.mp4"
-                    
-                    results = tester.test_video(video_path, expected, save_output, output_path)
-                    print(f"Test completed with {results['accuracy']:.3f} accuracy")
-                else:
-                    print("Video file not found!")
-                    
-            elif choice == "3":
-                img_path = input("Enter image path: ").strip()
-                if os.path.exists(img_path):
-                    image = cv2.imread(img_path)
-                    if image is not None:
-                        annotated, frame_result = tester.process_frame(image)
-                        cv2.imshow("Test Result", annotated)
-                        cv2.waitKey(0)
-                        cv2.destroyAllWindows()
-                        
-                        print(f"Detections: {len(frame_result['detections'])}")
-                        for i, det in enumerate(frame_result['detections']):
-                            print(f"  Detection {i+1}: ID={det['matched_id']}, Similarity={det['similarity']:.3f}")
-                    else:
-                        print("Could not load image!")
-                else:
-                    print("Image file not found!")
-                    
-            elif choice == "4":
-                tester._show_gallery()
-                
-            elif choice == "5":
-                tester.gallery_features = []
-                tester.gallery_ids = []
-                tester.gallery_images = []
-                tester.next_person_id = 1
-                print("Gallery cleared!")
-                
-            elif choice == "6":
-                tester._adjust_threshold()
-                
-            elif choice == "7":
-                output_path = input("Enter export path (or press Enter for default): ").strip()
-                if not output_path:
-                    output_path = "gallery_export.json"
-                tester.export_gallery(output_path)
-                
-            elif choice == "8":
-                input_path = input("Enter import path: ").strip()
-                tester.import_gallery(input_path)
-                
-            elif choice == "9":
-                test_dir = input("Enter test images directory: ").strip()
-                if os.path.exists(test_dir):
-                    tester.benchmark_performance(test_dir)
-                else:
-                    print("Directory not found!")
-                    
-            elif choice == "10":
-                print("Exiting interactive mode...")
-                break
-                
-            else:
-                print("Invalid choice!")
-                
-        except Exception as e:
-            print(f"Error: {e}")
-
-
 if __name__ == "__main__":
     print("Enhanced ReID Video Test Suite")
     print("=" * 50)
     print("Features:")
     print("- Full video test suite with accuracy metrics")
-    print("- Real-time camera testing with enhanced feedback")
-    print("- Performance benchmarking")
-    print("- Interactive testing mode")
-    print("- Gallery import/export functionality")
     print("- Comprehensive result visualization")
     print()
     

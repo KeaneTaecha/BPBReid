@@ -147,52 +147,13 @@ class ImprovedBPBreIDYOLOMaskedReID:
         print("Loading corrected BPBreid model...")
         
         try:
-            # Try building model with config parameter first (newer version)
-            try:
-                model = torchreid.models.build_model(
-                    name='bpbreid',
-                    num_classes=751,
-                    config=self.config,
-                    pretrained=True
-                )
-                print("Model built with config parameter (newer version)")
-            except (TypeError, KeyError) as e:
-                # Fallback for older torchreid versions that don't support config parameter
-                print("Config parameter not supported, using fallback method...")
-                
-                # Try importing bpbreid directly and build with config
-                try:
-                    from torchreid.models.bpbreid import bpbreid
-                    model = bpbreid(
-                        num_classes=751,
-                        loss='part_based',
-                        pretrained=True,
-                        config=self.config
-                    )
-                    print("Model built with direct bpbreid import (fallback method)")
-                except ImportError as import_error:
-                    print(f"BPBreID model not available: {import_error}")
-                    print("Available models in torchreid:")
-                    try:
-                        from torchreid.models import show_avai_models
-                        show_avai_models()
-                    except:
-                        print("Could not show available models")
-                    
-                    # As a last resort, try to use a different model
-                    print("Trying to use alternative model (resnet50)...")
-                    try:
-                        model = torchreid.models.build_model(
-                            name='resnet50',
-                            num_classes=751,
-                            loss='softmax',
-                            pretrained=True,
-                            use_gpu=self.device.type == 'cuda'
-                        )
-                        print("Using resnet50 as fallback (note: this won't have BPBreID features)")
-                    except Exception as fallback_error:
-                        print(f"Fallback model also failed: {fallback_error}")
-                        raise import_error
+            # Build model with original configuration
+            model = torchreid.models.build_model(
+                name='bpbreid',
+                num_classes=751,
+                config=self.config,
+                pretrained=True
+            )
             
             # Load weights
             checkpoint = torch.load(self.config.model.load_weights, map_location=self.device)
@@ -1517,8 +1478,7 @@ def main():
     
     # Get parent directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    realtime_dir = os.path.dirname(current_dir)
-    bpbreid_dir = os.path.dirname(realtime_dir)
+    bpbreid_dir = os.path.dirname(current_dir)
     
     # Configuration
     REID_MODEL_PATH = os.path.join(bpbreid_dir, "pretrained_models", "bpbreid_market1501_hrnet32_10642.pth")
@@ -1583,7 +1543,7 @@ def main():
             gallery_path=GALLERY_PATH,
             video1_path=VIDEO1_PATH,
             video2_path=VIDEO2_PATH,
-            output_dir="bpbreid_with_mask_test_results"
+            output_dir="results/bpbreid_with_mask_test_results"
         )
         
         print("\n🎉 Improved BPBreID test completed successfully!")

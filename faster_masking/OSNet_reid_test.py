@@ -679,191 +679,16 @@ class OSNetPersonReIDTester:
         except Exception as e:
             print(f"Error generating plots: {e}")
     
-    def test_different_thresholds(self, gallery_image_path, video1_path, video2_path, 
-                                 thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8]):
-        """Test performance with different similarity thresholds"""
-        print("\n" + "="*60)
-        print("THRESHOLD SENSITIVITY ANALYSIS")
-        print("="*60)
-        
-        # Clear and setup gallery
-        self.gallery_features = []
-        self.gallery_ids = []
-        self.gallery_images = []
-        self.next_person_id = 1
-        
-        # Add gallery image
-        print("\nLoading gallery image...")
-        try:
-            self.add_gallery_image(gallery_image_path)
-        except Exception as e:
-            print(f"Error loading gallery image: {e}")
-            return None
-        
-        results_by_threshold = []
-        
-        for threshold in thresholds:
-            print(f"\nTesting with threshold: {threshold}")
-            self.reid_threshold = threshold
-            
-            # Test video 1
-            results1 = self.test_video(video1_path, expected_match=True, save_annotated=False)
-            
-            # Test video 2
-            results2 = self.test_video(video2_path, expected_match=False, save_annotated=False)
-            
-            # Calculate combined metrics
-            total_correct = results1['correct_predictions'] + results2['correct_predictions']
-            total_tested = results1['frames_with_detection'] + results2['frames_with_detection']
-            overall_accuracy = total_correct / total_tested if total_tested > 0 else 0
-            
-            results_by_threshold.append({
-                'threshold': threshold,
-                'video1_accuracy': results1['accuracy'],
-                'video2_accuracy': results2['accuracy'],
-                'overall_accuracy': overall_accuracy,
-                'video1_match_rate': results1['frames_with_match'] / results1['frames_with_detection'] if results1['frames_with_detection'] > 0 else 0,
-                'video2_match_rate': results2['frames_with_match'] / results2['frames_with_detection'] if results2['frames_with_detection'] > 0 else 0
-            })
-        
-        # Print summary table
-        print("\n" + "="*80)
-        print("THRESHOLD ANALYSIS RESULTS")
-        print("="*80)
-        print(f"{'Threshold':<10} {'V1 Acc':<10} {'V2 Acc':<10} {'Overall':<10} {'V1 Match%':<12} {'V2 Match%':<12}")
-        print("-"*80)
-        
-        best_threshold = None
-        best_accuracy = 0
-        
-        for r in results_by_threshold:
-            print(f"{r['threshold']:<10.2f} {r['video1_accuracy']:<10.3f} {r['video2_accuracy']:<10.3f} "
-                  f"{r['overall_accuracy']:<10.3f} {r['video1_match_rate']*100:<12.1f} {r['video2_match_rate']*100:<12.1f}")
-            
-            if r['overall_accuracy'] > best_accuracy:
-                best_accuracy = r['overall_accuracy']
-                best_threshold = r['threshold']
-        
-        print("-"*80)
-        print(f"Best threshold: {best_threshold} with overall accuracy: {best_accuracy:.3f}")
-        
-        # Generate threshold analysis plot
-        self._plot_threshold_analysis(results_by_threshold)
-        
-        return results_by_threshold
-    
-    def _plot_threshold_analysis(self, results):
-        """Plot threshold sensitivity analysis"""
-        try:
-            thresholds = [r['threshold'] for r in results]
-            v1_acc = [r['video1_accuracy'] for r in results]
-            v2_acc = [r['video2_accuracy'] for r in results]
-            overall_acc = [r['overall_accuracy'] for r in results]
-            
-            plt.figure(figsize=(12, 6))
-            
-            # Plot accuracies
-            plt.subplot(1, 2, 1)
-            plt.plot(thresholds, v1_acc, 'g-o', label='Video 1 (Same Person)', linewidth=2)
-            plt.plot(thresholds, v2_acc, 'b-s', label='Video 2 (Different Person)', linewidth=2)
-            plt.plot(thresholds, overall_acc, 'r-^', label='Overall', linewidth=2)
-            plt.xlabel('Similarity Threshold')
-            plt.ylabel('Accuracy')
-            plt.title('Accuracy vs Threshold')
-            plt.legend()
-            plt.grid(True, alpha=0.3)
-            plt.ylim(0, 1.05)
-            
-            # Plot match rates
-            plt.subplot(1, 2, 2)
-            v1_match = [r['video1_match_rate'] for r in results]
-            v2_match = [r['video2_match_rate'] for r in results]
-            plt.plot(thresholds, v1_match, 'g-o', label='Video 1 Match Rate', linewidth=2)
-            plt.plot(thresholds, v2_match, 'b-s', label='Video 2 Match Rate', linewidth=2)
-            plt.xlabel('Similarity Threshold')
-            plt.ylabel('Match Rate')
-            plt.title('Match Rate vs Threshold')
-            plt.legend()
-            plt.grid(True, alpha=0.3)
-            plt.ylim(0, 1.05)
-            
-            plt.tight_layout()
-            plt.savefig('threshold_analysis.png', dpi=300, bbox_inches='tight')
-            plt.show()
-            
-            print("Threshold analysis plot saved to: threshold_analysis.png")
-            
-        except Exception as e:
-            print(f"Error generating threshold analysis plot: {e}")
-    
-    def compare_osnet_variants(self, gallery_image_path, video1_path, video2_path):
-        """Compare different OSNet model variants"""
-        print("\n" + "="*60)
-        print("OSNET VARIANTS COMPARISON")
-        print("="*60)
-        
-        variants = ['osnet_x0_25', 'osnet_x0_5', 'osnet_x0_75', 'osnet_x1_0']
-        results_by_variant = []
-        
-        for variant in variants:
-            print(f"\nTesting variant: {variant}")
-            
-            try:
-                # Create new tester with this variant
-                tester = OSNetPersonReIDTester(osnet_model_name=variant)
-                
-                # Add gallery
-                tester.add_gallery_image(gallery_image_path)
-                
-                # Test videos
-                results1 = tester.test_video(video1_path, expected_match=True, save_annotated=False)
-                results2 = tester.test_video(video2_path, expected_match=False, save_annotated=False)
-                
-                # Calculate metrics
-                total_correct = results1['correct_predictions'] + results2['correct_predictions']
-                total_tested = results1['frames_with_detection'] + results2['frames_with_detection']
-                overall_accuracy = total_correct / total_tested if total_tested > 0 else 0
-                
-                avg_fps = (results1.get('avg_fps', 0) + results2.get('avg_fps', 0)) / 2
-                
-                results_by_variant.append({
-                    'variant': variant,
-                    'video1_accuracy': results1['accuracy'],
-                    'video2_accuracy': results2['accuracy'],
-                    'overall_accuracy': overall_accuracy,
-                    'avg_fps': avg_fps
-                })
-                
-            except Exception as e:
-                print(f"Error testing variant {variant}: {e}")
-                continue
-        
-        # Print comparison table
-        print("\n" + "="*80)
-        print("OSNET VARIANTS COMPARISON RESULTS")
-        print("="*80)
-        print(f"{'Variant':<15} {'V1 Acc':<10} {'V2 Acc':<10} {'Overall':<10} {'Avg FPS':<10}")
-        print("-"*80)
-        
-        for r in results_by_variant:
-            print(f"{r['variant']:<15} {r['video1_accuracy']:<10.3f} {r['video2_accuracy']:<10.3f} "
-                  f"{r['overall_accuracy']:<10.3f} {r['avg_fps']:<10.1f}")
-        
-        return results_by_variant
 
 
 def main():
-    """Main function to run the OSNet test suite"""
+    """Main function to run the OSNet test suite with default model"""
     print("OSNet ReID Video Test Suite")
     print("=" * 50)
     
-    # Get current directory
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    
     # Get parent directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    realtime_dir = os.path.dirname(current_dir)               
-    bpbreid_dir = os.path.dirname(realtime_dir) 
+    bpbreid_dir = os.path.dirname(current_dir) 
     
     # Test file paths
     gallery_image_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-1", "gallery-person.jpg")
@@ -901,106 +726,22 @@ def main():
         return
     
     try:
-        print("\nChoose test mode:")
-        print("1. Full test suite with default OSNet model")
-        print("2. Test with specific OSNet variant")
-        print("3. Threshold sensitivity analysis")
-        print("4. Compare all OSNet variants")
-        print("5. Quick test (no video saving)")
+        # Full test suite with default OSNet model
+        print("\nInitializing OSNet test system...")
+        tester = OSNetPersonReIDTester(osnet_model_name='osnet_x1_0')
         
-        choice = input("\nEnter choice (1-5): ").strip()
+        results = tester.run_full_test(
+            gallery_image_path=gallery_image_path,
+            video1_path=video1_path,
+            video2_path=video2_path,
+            save_annotated=True,
+            output_dir="results/osnet_test_results"
+        )
         
-        if choice == "1":
-            # Full test suite with default model
-            print("\nInitializing OSNet test system...")
-            tester = OSNetPersonReIDTester(osnet_model_name='osnet_x1_0')
-            
-            results = tester.run_full_test(
-                gallery_image_path=gallery_image_path,
-                video1_path=video1_path,
-                video2_path=video2_path,
-                save_annotated=True,
-                output_dir="osnet_test_results"
-            )
-            
-            if results:
-                print("\nFull test completed successfully!")
-            else:
-                print("Test failed!")
-                
-        elif choice == "2":
-            # Test with specific variant
-            print("\nAvailable OSNet variants:")
-            print("  1. osnet_x0_25 (Fastest, least accurate)")
-            print("  2. osnet_x0_5")
-            print("  3. osnet_x0_75")
-            print("  4. osnet_x1_0 (Standard)")
-            print("  5. osnet_ain_x1_0 (With AIN)")
-            print("  6. osnet_ibn_x1_0 (With IBN)")
-            
-            variant_choice = input("Enter variant number (1-6): ").strip()
-            
-            variant_map = {
-                '1': 'osnet_x0_25',
-                '2': 'osnet_x0_5',
-                '3': 'osnet_x0_75',
-                '4': 'osnet_x1_0',
-                '5': 'osnet_ain_x1_0',
-                '6': 'osnet_ibn_x1_0'
-            }
-            
-            variant = variant_map.get(variant_choice, 'osnet_x1_0')
-            
-            print(f"\nInitializing OSNet ({variant}) test system...")
-            tester = OSNetPersonReIDTester(osnet_model_name=variant)
-            
-            results = tester.run_full_test(
-                gallery_image_path=gallery_image_path,
-                video1_path=video1_path,
-                video2_path=video2_path,
-                save_annotated=True,
-                output_dir=f"osnet_{variant}_results"
-            )
-            
-        elif choice == "3":
-            # Threshold sensitivity analysis
-            print("\nInitializing OSNet for threshold analysis...")
-            tester = OSNetPersonReIDTester(osnet_model_name='osnet_x1_0')
-            
-            thresholds = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
-            results = tester.test_different_thresholds(
-                gallery_image_path=gallery_image_path,
-                video1_path=video1_path,
-                video2_path=video2_path,
-                thresholds=thresholds
-            )
-            
-        elif choice == "4":
-            # Compare all variants
-            print("\nComparing OSNet variants...")
-            tester = OSNetPersonReIDTester()  # Just for the comparison method
-            
-            results = tester.compare_osnet_variants(
-                gallery_image_path=gallery_image_path,
-                video1_path=video1_path,
-                video2_path=video2_path
-            )
-            
-        elif choice == "5":
-            # Quick test without saving videos
-            print("\nInitializing OSNet for quick test...")
-            tester = OSNetPersonReIDTester(osnet_model_name='osnet_x1_0')
-            
-            results = tester.run_full_test(
-                gallery_image_path=gallery_image_path,
-                video1_path=video1_path,
-                video2_path=video2_path,
-                save_annotated=False,
-                output_dir="osnet_quick_results"
-            )
-            
+        if results:
+            print("\nFull test completed successfully!")
         else:
-            print("Invalid choice. Exiting.")
+            print("Test failed!")
             
     except Exception as e:
         print(f"Error running OSNet test: {e}")
@@ -1013,13 +754,10 @@ if __name__ == "__main__":
     print("OSNet Person Re-Identification Video Testing Suite")
     print("="*60)
     print("\nFeatures:")
-    print("- Multiple OSNet model variants support")
+    print("- Default OSNet x1.0 model")
     print("- Frame-by-frame video testing")
     print("- Accuracy metrics and performance analysis")
-    print("- Similarity score distribution analysis")
-    print("- Threshold sensitivity testing")
     print("- Visual results with annotated videos")
-    print("- Comprehensive comparison plots")
     print()
     
     main()
