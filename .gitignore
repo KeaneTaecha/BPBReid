@@ -144,5 +144,9 @@ debug*
 
 # Dataset folders
 datasets/Market-1501-v15.09.15/
-datasets/Market-1501-v15.09.15-test/
+datasets/Compare/
 datasets/Occluded_Duke/
+
+realtime/testing/bpbreid_with_mask_test_results/
+realtime/testing/osnet_test_results/
+realtime/testing/reid_no_mask_test_results/
