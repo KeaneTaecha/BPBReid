@@ -143,9 +143,7 @@ debug*
 /configs_user/
 
 # Dataset folders
-datasets/Market-1501-v15.09.15/
-datasets/Compare/
-datasets/Occluded_Duke/
+datasets/
 
 realtime/testing/bpbreid_with_mask_test_results/
 realtime/testing/osnet_test_results/
