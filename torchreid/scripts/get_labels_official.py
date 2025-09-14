@@ -191,9 +191,13 @@ class BatchPifPaf:
         print(f"* OpenPifPaf model ->  {model_name}")
         # Define the OpenPifPaf model
         self.model = openpifpaf.Predictor(checkpoint=model_name, visualize_image=True, visualize_processed_image=True)
-        self.batch_size = batch_size if batch_size else self.model.batch_size
+        self.batch_size = batch_size
         self.workers = workers if workers else self.model.loader_workers if self.model.loader_workers is not None else 0
         self.__collate = openpifpaf.datasets.collate_images_anns_meta
+        
+        # Print device information for PifPaf
+        device = str(self.model.device)
+        print(f"* PifPaf Device: {device.upper()}")
         
         # Timing statistics
         self.timing_stats = {
@@ -375,8 +379,8 @@ class BatchMask:
         self.cfg = build_config_maskrcnn(cfg) if isinstance(cfg, str) else cfg.clone()
         print(f"* MaskRCNN model ->  {cfg if isinstance(cfg, str) else self.cfg.MODEL.WEIGHTS}")
 
-        # Set the batch size for processing images, defaulting to 32 if not provided
-        self.batch_size = batch_size if batch_size else 32
+        # Set the batch size for processing images
+        self.batch_size = batch_size
 
         # Set the number of worker processes for data loading, defaulting to the number of CPU cores
         self.workers = workers if workers is not None else 0
@@ -390,6 +394,10 @@ class BatchMask:
         # Load the pre-trained weights for the model
         checkpointer = DetectionCheckpointer(self.model)
         checkpointer.load(self.cfg.MODEL.WEIGHTS)
+        
+        # Print device information for MaskRCNN
+        device = str(next(self.model.parameters()).device)
+        print(f"* MaskRCNN Device: {device.upper()}")
 
         # Define the augmentation transform for resizing images
         self.aug = T.ResizeShortestEdge(
@@ -680,6 +688,14 @@ def main():
     parser.add_argument('--single-image', type=str,
                         help='Process only a single image for timing measurement')
     args = parser.parse_args()
+
+    # Print device information
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"* Device: {device.upper()}")
+    if torch.cuda.is_available():
+        print(f"* CUDA Device: {torch.cuda.get_device_name(0)}")
+        print(f"* CUDA Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    print()
 
     # Get image paths
     if args.single_image:

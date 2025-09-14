@@ -599,6 +599,9 @@ class BatchYOLOPose:
         # Initialize YOLO pose mask generator
         self.mask_generator = YOLOPoseMaskGenerator(yolo_model_path)
         
+        # Print device information for BatchYOLOPose
+        print(f"* BatchYOLOPose Device: {str(self.mask_generator.device).upper()}")
+        
         # Set the batch size for processing images
         self.batch_size = batch_size
         
@@ -771,6 +774,14 @@ def main():
     parser.add_argument('--single-image', type=str,
                         help='Process only a single image for timing measurement')
     args = parser.parse_args()
+
+    # Print device information
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"* Device: {device.upper()}")
+    if torch.cuda.is_available():
+        print(f"* CUDA Device: {torch.cuda.get_device_name(0)}")
+        print(f"* CUDA Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    print()
 
     # Get image paths
     if args.single_image:
