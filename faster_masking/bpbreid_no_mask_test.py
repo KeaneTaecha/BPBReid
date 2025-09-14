@@ -395,7 +395,7 @@ class EnhancedPersonReIDTester:
         return results
     
     def run_full_test(self, gallery_image_path, video1_path, video2_path, 
-                     save_annotated=True, output_dir="reid_no_mask_test_results"):
+                     save_annotated=True, output_dir="bpbreid_no_mask_test_results"):
         """
         Run complete test suite
         
@@ -638,9 +638,9 @@ def main():
     hrnet_path = os.path.join(bpbreid_dir, "pretrained_models", "hrnetv2_w32_imagenet_pretrained.pth")
 
     # Test file paths
-    gallery_image_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-2", "person-1.jpg")
-    video1_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-2", "person-1-vid.MOV")
-    video2_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-2","person-2-vid.MOV")
+    gallery_image_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-1", "gallery-person.jpg")
+    video1_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-1", "correct.MOV")
+    video2_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-1","incorrect.MOV")
     
     # Verify critical files exist
     required_files = [reid_model_path, hrnet_path]
@@ -665,11 +665,11 @@ def main():
                 video1_path=video1_path,
                 video2_path=video2_path,
                 save_annotated=True,
-                output_dir="results/reid_no_mask_test_results"
+                output_dir="results/bpbreid_no_mask_test_results"
             )
             
             if results:
-                tester.generate_comparison_plots(results, "results/reid_no_mask_test_results")
+                tester.generate_comparison_plots(results, "results/bpbreid_no_mask_test_results")
                 print("\nFull test completed successfully!")
             else:
                 print("Full test failed!")

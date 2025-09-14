@@ -398,7 +398,7 @@ class OSNetPersonReIDTester:
         return results
     
     def run_full_test(self, gallery_image_path, video1_path, video2_path, 
-                     save_annotated=True, output_dir="osnet_test_results"):
+                     save_annotated=True, output_dir="OSNet_test_results"):
         """
         Run complete test suite
         
@@ -691,28 +691,10 @@ def main():
     bpbreid_dir = os.path.dirname(current_dir) 
     
     # Test file paths
-    gallery_image_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-1", "gallery-person.jpg")
-    video1_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-1", "correct.MOV")
-    video2_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-1","incorrect.MOV")
+    gallery_image_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-2", "person-1.jpg")
+    video1_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-2", "person-1-vid.MOV")
+    video2_path = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-2","person-2-vid.MOV")
     
-    # Check if using default paths
-    if "path/to" in gallery_image_path:
-        print("\nPlease update the file paths in the main() function to match your dataset location.")
-        print("\nAlternatively, you can run the script with command line arguments:")
-        print("python osnet_reid_test.py <gallery_image> <video1> <video2>")
-        
-        # Try to get paths from command line arguments
-        import sys
-        if len(sys.argv) == 4:
-            gallery_image_path = sys.argv[1]
-            video1_path = sys.argv[2]
-            video2_path = sys.argv[3]
-        else:
-            print("\nExample paths structure:")
-            print("  gallery_image_path = 'datasets/Compare/dataset-2/person-1.jpg'")
-            print("  video1_path = 'datasets/Compare/dataset-2/person-1-vid.MOV'")
-            print("  video2_path = 'datasets/Compare/dataset-2/person-2-vid.MOV'")
-            return
     
     # Verify files exist
     required_files = [gallery_image_path, video1_path, video2_path]
@@ -735,7 +717,7 @@ def main():
             video1_path=video1_path,
             video2_path=video2_path,
             save_annotated=True,
-            output_dir="results/osnet_test_results"
+            output_dir="results/OSNet_test_results"
         )
         
         if results:

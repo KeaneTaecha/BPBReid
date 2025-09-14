@@ -1486,7 +1486,7 @@ def main():
     YOLO_MODEL = "yolov8n-pose.pt"
     
     # Test dataset paths - you can switch between datasets
-    dataset = "dataset-1"  # Change to "dataset-1" to test the other dataset
+    dataset = "dataset-2"  # Change to "dataset-1" to test the other dataset
     
     if dataset == "dataset-2":
         GALLERY_PATH = os.path.join(bpbreid_dir, "datasets", "Compare", "dataset-2", "person-1.jpg")
