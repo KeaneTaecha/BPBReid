@@ -143,5 +143,5 @@ debug*
 /configs_user/
 
 # Dataset folders
-datasets/
-faster_masking/results/
+/datasets/
+/faster_masking/results/
