@@ -474,7 +474,7 @@ class YOLOPoseMaskGenerator:
                     knee_y = scaled_keypoints[knee_idx, 1]
                     
                     y_coords = torch.arange(feat_h, device=self.device).float().unsqueeze(1)
-                    x_coords = torch.arange(w, device=self.device).float().unsqueeze(0)
+                    x_coords = torch.arange(feat_w, device=self.device).float().unsqueeze(0)
                     circle_mask = ((x_coords - knee_x)**2 + (y_coords - knee_y)**2 <= 4).float()
                     upper_legs_mask = torch.maximum(upper_legs_mask, circle_mask)
             
