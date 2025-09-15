@@ -171,9 +171,9 @@ class YOLOPoseMaskGenerator:
         """
         
         try:
-            # Ensure person_img is a numpy array, not a tensor
-            if isinstance(person_img, torch.Tensor):
-                person_img = person_img.cpu().numpy()
+            # # Ensure person_img is a numpy array, not a tensor
+            # if isinstance(person_img, torch.Tensor):
+            #     person_img = person_img.cpu().numpy()
             
             # Ensure image is in BGR format for YOLO
             if len(person_img.shape) == 3 and person_img.shape[2] == 3:
