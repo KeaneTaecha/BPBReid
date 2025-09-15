@@ -447,11 +447,6 @@ class ImprovedBPBreIDYOLOMaskedReID:
                     partial_x = knee_x + 0.75 * (ankle_x - knee_x)
                     partial_y = knee_y + 0.75 * (ankle_y - knee_y)
                     
-                    # Create temporary keypoints for partial calf
-                    temp_keypoints = keypoints.copy()
-                    temp_keypoints[ankle_idx, 0] = partial_x
-                    temp_keypoints[ankle_idx, 1] = partial_y
-                    
                     # Draw partial calf
                     x1 = int(knee_x * scale_x)
                     y1 = int(knee_y * scale_y)
