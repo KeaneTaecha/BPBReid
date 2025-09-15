@@ -1,10 +1,10 @@
 data:
   root: '/home/kunanont/BPBReid/datasets'
-  sources: ['market1501']
-  targets: ['market1501']
+  sources: [ 'market1501' ]
+  targets: [ 'market1501' ]
   height: 384
   width: 128
-  transforms: ['rc', 're']
+  transforms: [ 'rc', 're' ]
 
 model:
   name: 'bpbreid'
@@ -15,21 +15,12 @@ model:
     mask_filtering_testing: True
     learnable_attention_enabled: True
     backbone: 'hrnet32'
-    test_embeddings: ['bn_foreg', 'parts']
+    test_embeddings: [ 'bn_foreg', 'parts' ]
     masks:
       dir: 'pifpaf_maskrcnn_filtering'
-      preprocess: 'none'  # Change from 'five_v' to 'none'
+      preprocess: 'five_v'
 
 test:
-  evaluate_freq: -1
-  start_eval: 0
-  print_freq: 10
-  batch_size: 32
-  combine_trainval: False
-  dist_metric: 'euclidean'
-  normalize_feature: False
-  visrank: False
-  visrank_topk: 10
-  use_metric_cuhk03: False
-  ranks: [1, 5, 10, 20]
-  rerank: False
+  evaluate: True
+  batch_size: 16
+  visrank: True
