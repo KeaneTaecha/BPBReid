@@ -46,7 +46,7 @@ class Market1501(ImageDataset):
             self.masks_parts_numbers, self.has_background, self.masks_suffix = None, None, None
         self.root = osp.abspath(osp.expanduser(root))
         self.dataset_dir = osp.join(self.root, self.dataset_dir)
-        self.download_dataset(self.dataset_dir, self.dataset_url)
+        # self.download_dataset(self.dataset_dir, self.dataset_url)  # Commented out since dataset already exists
         self.masks_dir = masks_dir
 
         # allow alternative directory structure
