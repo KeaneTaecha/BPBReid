@@ -551,7 +551,24 @@ class YOLOPoseMaskGenerator:
             final_masks = final_masks / mask_sum
             
             # Return as numpy array for compatibility
-            return final_masks.cpu().numpy()
+            masks_np = final_masks.cpu().numpy()
+            
+            # Resize masks to expected format (6, 9, 17) like PifPaf masks
+            # Remove the batch dimension (1, 6, feat_h, feat_w) -> (6, feat_h, feat_w)
+            masks_np = masks_np.squeeze(0)  # Now shape is (6, feat_h, feat_w)
+            
+            # Resize each part mask to (9, 17)
+            resized_masks = []
+            for i in range(6):  # 6 parts (5 body parts + background)
+                part_mask = masks_np[i]  # Shape: (feat_h, feat_w)
+                # Resize to (9, 17) using OpenCV
+                resized_part = cv2.resize(part_mask, (17, 9), interpolation=cv2.INTER_CUBIC)
+                resized_masks.append(resized_part)
+            
+            # Stack back to (6, 9, 17)
+            final_masks_resized = np.stack(resized_masks, axis=0)
+            
+            return final_masks_resized
             
         except Exception as e:
             print(f"YOLO Pose skeleton mask generation failed: {e}")
