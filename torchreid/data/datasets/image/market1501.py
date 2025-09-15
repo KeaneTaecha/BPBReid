@@ -26,10 +26,10 @@ class Market1501(ImageDataset):
     dataset_url = 'http://188.138.127.15:81/Datasets/Market-1501-v15.09.15.zip'
 
     masks_dirs = {
-        # dir_name: (parts_num, masks_stack_size, contains_background_mask)
-        'pifpaf': (36, False, '.jpg.confidence_fields.npy'),
-        'pifpaf_maskrcnn_filtering': (36, False, '.npy'),
-        'yolo_pose': (6, False, '.npy'),
+        # dir_name: (parts_num, masks_stack_size, contains_background_mask, parts_names)
+        'pifpaf': (36, False, '.jpg.confidence_fields.npy', None),
+        'pifpaf_maskrcnn_filtering': (36, False, '.npy', None),
+        'yolo_pose': (6, False, '.npy', ['background', 'head', 'upper_body', 'lower_body', 'upper_legs', 'lower_legs']),
     }
 
     @staticmethod
