@@ -37,43 +37,24 @@ def get_image_paths(source, path_format=False):
 
 
 def format_path(img_path, dataset_dir):
-    """
-    Formats the given image path based on the dataset directory.
-
-    Args:
-        img_path (str): The path of the image file.
-        dataset_dir (str): The directory path of the dataset.
-
-    Returns:
-        str: The formatted path of the image file.
-    """
-    if "occluded_reid" in dataset_dir.lower() or "occluded-reid" in dataset_dir.lower():
-        return os.path.join(os.path.basename(os.path.dirname(os.path.dirname(img_path))), os.path.basename(img_path))
-    elif "p-dukemtmc_reid" in dataset_dir.lower() or "p-dukemtmc-reid" in dataset_dir.lower():
-        return os.path.join(os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(img_path)))),
-                            os.path.basename(os.path.dirname(os.path.dirname(img_path))), os.path.basename(img_path))
-    return os.path.relpath(img_path, dataset_dir)
+    """Convert image path to relative path within dataset directory."""
+    # Get relative path from dataset directory
+    rel_path = os.path.relpath(img_path, dataset_dir)
+    # Remove the .jpg extension
+    rel_path = rel_path.replace('.jpg', '')
+    return rel_path
 
 
 def get_label_paths(img_paths, dataset_dir):
-    """
-    Get the paths of label files corresponding to the image paths.
-
-    Args:
-        img_paths (List[str]): List of image file paths.
-        dataset_dir (str): Directory path of the dataset.
-
-    Returns:
-        relative_paths (List[str]): List of relative paths of the image files.
-        file_paths (List[str]): List of label file paths.
-    """
-    relative_paths, file_paths = [], []
-    for img_name in img_paths:
-        relative_path = format_path(img_name, dataset_dir)
+    """Get corresponding label paths for image paths."""
+    label_paths = []
+    for img_path in img_paths:
+        # Get relative path without .jpg extension
+        relative_path = format_path(img_path, dataset_dir)
+        # Create label path with .npy extension
         file_path = os.path.join(dataset_dir, "masks", "yolo_pose", relative_path + ".npy")
-        relative_paths.append(relative_path)
-        file_paths.append(file_path)
-    return relative_paths, file_paths
+        label_paths.append(file_path)
+    return label_paths
 
 
 def skip_existing(imagery, dataset_dir):
