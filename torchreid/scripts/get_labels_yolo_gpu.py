@@ -136,7 +136,6 @@ import torch.nn.functional as F
 import numpy as np
 from ultralytics import YOLO
 
-
 class YOLOPoseMaskGenerator:
     """
     GPU-optimized YOLO Pose-based mask generator for BPBreID
