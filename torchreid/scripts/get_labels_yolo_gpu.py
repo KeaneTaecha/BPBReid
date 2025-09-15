@@ -47,14 +47,16 @@ def format_path(img_path, dataset_dir):
 
 def get_label_paths(img_paths, dataset_dir):
     """Get corresponding label paths for image paths."""
-    label_paths = []
+    relative_paths = []
+    file_paths = []
     for img_path in img_paths:
         # Get relative path without .jpg extension
         relative_path = format_path(img_path, dataset_dir)
         # Create label path with .npy extension
         file_path = os.path.join(dataset_dir, "masks", "yolo_pose", relative_path + ".npy")
-        label_paths.append(file_path)
-    return label_paths
+        relative_paths.append(relative_path)
+        file_paths.append(file_path)
+    return relative_paths, file_paths
 
 
 def skip_existing(imagery, dataset_dir):
