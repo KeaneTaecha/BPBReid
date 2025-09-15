@@ -1,5 +1,5 @@
 data:
-  root: '~/datasets'
+  root: '/home/kunanont/BPBReid/datasets'
   sources: ['market1501']
   targets: ['market1501']
   height: 384
