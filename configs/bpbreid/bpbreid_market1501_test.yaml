@@ -17,7 +17,7 @@ model:
     backbone: 'hrnet32'
     test_embeddings: [ 'bn_foreg', 'parts' ]
     masks:
-      dir: 'pifpaf_maskrcnn_filtering'
+      dir: 'yolo_pose'
       preprocess: 'none'
 
 test:
