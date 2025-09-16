@@ -10,3 +10,4 @@ from .visualization import *
 from .reidtools import *
 from .writer import *
 from .model_complexity import compute_model_complexity
+from .yolo_pose_masks import *
