@@ -58,15 +58,7 @@ class YOLOPoseMaskGenerator:
             if isinstance(person_img, torch.Tensor):
                 person_img = person_img.cpu().numpy()
             
-            # Ensure image is in BGR format for YOLO
-            if len(person_img.shape) == 3 and person_img.shape[2] == 3:
-                # Already BGR from cv2.imread
-                pass
-            else:
-                print(f"Warning: Unexpected image format with shape {person_img.shape}")
-                return None
-            
-            # Run YOLO pose estimation
+            # Run YOLO pose estimation directly on BGR image (same as default implementation)
             results = self.yolo(person_img, task='pose')
             
             # Check if results exist and have keypoints
@@ -172,13 +164,13 @@ class YOLOPoseMaskGenerator:
             temp_masks = self._apply_morphological_smoothing(temp_masks)
             
             # Apply priority-based overlap handling
-            final_masks = self._apply_priority_assignment(temp_masks, feat_h, feat_w)
+            final_masks, assignment_map = self._apply_priority_assignment(temp_masks, feat_h, feat_w)
             
             # Apply final smoothing
             final_masks = self._apply_final_smoothing(final_masks)
             
             # Create background mask and normalize
-            final_masks = self._finalize_masks(final_masks)
+            final_masks = self._finalize_masks(final_masks, assignment_map)
             
             # Return in appropriate format
             if device is not None:
@@ -445,6 +437,7 @@ class YOLOPoseMaskGenerator:
         
         # Create assignment map
         assignment_map = torch.zeros(feat_h, feat_w, dtype=torch.long)
+        priority_map = torch.zeros(feat_h, feat_w)
         
         # Threshold for considering a pixel as part of a mask
         activation_threshold = 0.2
@@ -463,12 +456,13 @@ class YOLOPoseMaskGenerator:
                             assigned_part = part_idx
                 
                 assignment_map[y, x] = assigned_part
+                priority_map[y, x] = max_priority
         
         # Create hard masks based on assignment
         for part_idx in range(1, 6):
             final_masks[0, part_idx] = (assignment_map == part_idx).float()
         
-        return final_masks
+        return final_masks, assignment_map
     
     def _apply_final_smoothing(self, final_masks):
         """Apply final smoothing to reduce harsh boundaries"""
@@ -485,13 +479,10 @@ class YOLOPoseMaskGenerator:
         
         return final_masks
     
-    def _finalize_masks(self, final_masks):
+    def _finalize_masks(self, final_masks, assignment_map):
         """Create background mask and normalize"""
         # Create background mask (pixels not assigned to any part)
-        assignment_map = torch.zeros(final_masks.shape[2], final_masks.shape[3], dtype=torch.long)
-        for part_idx in range(1, 6):
-            assignment_map = torch.where(final_masks[0, part_idx] > 0, part_idx, assignment_map)
-        
+        # Use the same logic as the default implementation
         final_masks[0, 0] = (assignment_map == 0).float()
         
         # Ensure each pixel sums to 1 (normalization)
