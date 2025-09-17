@@ -137,47 +137,7 @@ class ImageDataset(Dataset):
         return len(self.imagery)
 
 
-class YOLOPoseMaskGenerator:
-    """
-    YOLO Pose-based mask generator for BPBreID
-    Adapted from bpbreid_yolo_masked_reid_fin2.py
-    """
-    
-    def __init__(self, yolo_model_path='yolov8n-pose.pt', keypoint_confidence_threshold=0.5):
-        """
-        Initialize YOLO Pose mask generator
-
-        Args:
-            yolo_model_path: Path to YOLO model weights
-            keypoint_confidence_threshold: Confidence threshold for keypoints
-        """
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
-        # Load YOLO for pose estimation
-        print(f"Loading YOLO model: {yolo_model_path}")
-        self.yolo = YOLO(yolo_model_path)
-        
-        # BPBreID configuration (standard dimensions)
-        self.config = type('Config', (), {
-            'data': type('Data', (), {
-                'height': 384,
-                'width': 128
-            })()
-        })()
-        
-        # Initialize the shared mask generator
-        self.mask_generator = YOLOPoseMaskGenerator(
-            yolo_model=self.yolo,
-            keypoint_confidence_threshold=keypoint_confidence_threshold,
-            height=self.config.data.height,
-            width=self.config.data.width
-        )
-        
-        print("YOLO Pose mask generator initialized successfully")
-    
-    def generate_yolo_pose_masks(self, person_img):
-        """Generate pose-based masks using the shared utility"""
-        return self.mask_generator.generate_masks(person_img, device=None)
+# YOLOPoseMaskGenerator is now imported from torchreid.utils.yolo_pose_masks
 
 
 class BatchYOLOPose:
@@ -192,11 +152,21 @@ class BatchYOLOPose:
         """
         print(f"* YOLO Pose model -> {yolo_model_path}")
         
-        # Initialize YOLO pose mask generator
-        self.mask_generator = YOLOPoseMaskGenerator(yolo_model_path)
+        # Load YOLO model
+        print(f"Loading YOLO model: {yolo_model_path}")
+        yolo_model = YOLO(yolo_model_path)
+        
+        # Initialize YOLO pose mask generator with correct parameters
+        self.mask_generator = YOLOPoseMaskGenerator(
+            yolo_model=yolo_model,
+            keypoint_confidence_threshold=0.5,
+            height=384,
+            width=128
+        )
         
         # Print device information for BatchYOLOPose
-        print(f"* BatchYOLOPose Device: {str(self.mask_generator.device).upper()}")
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"* BatchYOLOPose Device: {str(device).upper()}")
         
         # Set the batch size for processing images
         self.batch_size = batch_size
@@ -278,7 +248,7 @@ class BatchYOLOPose:
                     
                     # Time YOLO pose inference and mask generation per frame
                     frame_start = time.time()
-                    masks = self.mask_generator.generate_yolo_pose_masks(image)
+                    masks = self.mask_generator.generate_masks(image, device=None)
                     frame_end = time.time()
                     frame_time = frame_end - frame_start
                     
