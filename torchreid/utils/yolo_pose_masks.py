@@ -78,9 +78,7 @@ class YOLOPoseMaskGenerator:
             keypoints = results[0].keypoints.data[0].cpu().numpy()  # Shape: [17, 3] - (x, y, confidence)
             
             # Validate keypoints shape
-            print(f"Debug: keypoints shape: {keypoints.shape}")
             if keypoints.shape[0] != 17:
-                print(f"Warning: Expected 17 keypoints, got {keypoints.shape[0]}")
                 return None
             
             # Create 5-part masks from skeleton
@@ -185,17 +183,8 @@ class YOLOPoseMaskGenerator:
             # Apply morphological operations to smooth masks
             temp_masks = self._apply_morphological_smoothing(temp_masks)
             
-            # Debug: Check temp_masks shape before priority assignment
-            print(f"Debug: temp_masks shape before priority assignment: {temp_masks.shape}")
-            
             # Apply priority-based overlap handling
-            try:
-                final_masks, assignment_map = self._apply_priority_assignment(temp_masks, feat_h, feat_w)
-            except Exception as e:
-                print(f"Error in priority assignment: {e}")
-                # Create fallback masks
-                final_masks = torch.zeros(1, 6, feat_h, feat_w, device=self.device)
-                assignment_map = torch.zeros(feat_h, feat_w, device=self.device, dtype=torch.long)
+            final_masks, assignment_map = self._apply_priority_assignment(temp_masks, feat_h, feat_w)
             
             # Apply final smoothing
             final_masks = self._apply_final_smoothing(final_masks)
@@ -443,37 +432,52 @@ class YOLOPoseMaskGenerator:
         """Apply morphological operations to smooth masks using GPU operations"""
         for i in range(1, 6):
             if temp_masks[i].max() > 0:
-                # Apply GPU-based morphological operations
-                temp_masks[i] = self._dilate_gpu(temp_masks[i], 3)
-                temp_masks[i] = self._erode_gpu(temp_masks[i], 3)
-                temp_masks[i] = self._gaussian_blur_gpu(temp_masks[i], 3, 0.5)
+                # Convert to numpy for OpenCV operations to match CPU version exactly
+                mask_np = temp_masks[i].cpu().numpy()
+                kernel = np.ones((3, 3), np.uint8)
+                mask_np = cv2.dilate(mask_np, kernel, iterations=1)
+                mask_np = cv2.erode(mask_np, kernel, iterations=1)
+                mask_np = cv2.GaussianBlur(mask_np, (3, 3), 0.5)
+                temp_masks[i] = torch.from_numpy(mask_np).to(self.device)
         return temp_masks
     
     def _apply_priority_assignment(self, temp_masks, feat_h, feat_w):
         """Apply priority-based overlap handling using GPU operations"""
-        # Priority order (higher number = higher priority):
+        # Priority order (higher number = higher priority) - match CPU version exactly:
         # Head: 5 (highest), Upper body: 4, Lower body: 3, Foot: 2, Upper legs: 1 (lowest)
-        part_priorities = torch.tensor([0, 5, 4, 3, 1, 2], device=self.device, dtype=torch.float32)  # 0 for background
+        part_priorities = {
+            1: 5,  # Head - highest priority
+            2: 4,  # Upper body - second highest priority
+            3: 3,  # Lower body - middle priority
+            4: 1,  # Upper legs (thighs and upper calf) - lowest priority
+            5: 2,  # Foot (lower calf + ankle + foot area) - second lowest priority
+        }
         
         # Create final masks with priority-based assignment
         final_masks = torch.zeros(1, 6, feat_h, feat_w, device=self.device)
         
+        # Create assignment map
+        assignment_map = torch.zeros(feat_h, feat_w, device=self.device, dtype=torch.long)
+        priority_map = torch.zeros(feat_h, feat_w, device=self.device)
+        
         # Threshold for considering a pixel as part of a mask
         activation_threshold = 0.2
         
-        # Create activation masks for each part
-        activation_masks = (temp_masks > activation_threshold).float()
-        print(f"Debug: activation_masks shape: {activation_masks.shape}")
-        print(f"Debug: part_priorities shape: {part_priorities.shape}")
-        
-        # Apply priorities to activation masks - ensure proper broadcasting
-        # temp_masks shape: [6, feat_h, feat_w]
-        # part_priorities shape: [6] -> need to reshape to [6, 1, 1] for broadcasting
-        priority_masks = activation_masks * part_priorities.view(6, 1, 1)
-        print(f"Debug: priority_masks shape: {priority_masks.shape}")
-        
-        # Find the part with highest priority for each pixel
-        max_priorities, assignment_map = torch.max(priority_masks, dim=0)
+        # Assign each pixel to the highest priority part - match CPU logic exactly
+        for y in range(feat_h):
+            for x in range(feat_w):
+                max_priority = 0
+                assigned_part = 0
+                
+                for part_idx in range(1, 6):
+                    if temp_masks[part_idx, y, x] > activation_threshold:
+                        part_priority = part_priorities[part_idx]
+                        if part_priority > max_priority:
+                            max_priority = part_priority
+                            assigned_part = part_idx
+                
+                assignment_map[y, x] = assigned_part
+                priority_map[y, x] = max_priority
         
         # Create hard masks based on assignment
         for part_idx in range(1, 6):
@@ -483,24 +487,18 @@ class YOLOPoseMaskGenerator:
     
     def _apply_final_smoothing(self, final_masks):
         """Apply final smoothing to reduce harsh boundaries using GPU operations"""
-        # Create smooth kernel for GPU operations
-        smooth_kernel = torch.tensor([[1, 1, 1],
-                                     [1, 2, 1],
-                                     [1, 1, 1]], device=self.device, dtype=torch.float32) / 10.0
+        # Use OpenCV operations to match CPU version exactly
+        smooth_kernel = np.array([[1, 1, 1],
+                                [1, 2, 1],
+                                [1, 1, 1]], dtype=np.float32) / 10.0
         
         for i in range(1, 6):
             if final_masks[0, i].max() > 0:
-                # Apply custom smoothing kernel
-                mask_4d = final_masks[0, i].unsqueeze(0).unsqueeze(0)  # [1, 1, H, W]
-                kernel_4d = smooth_kernel.unsqueeze(0).unsqueeze(0)  # [1, 1, 3, 3]
-                
-                # Apply convolution
-                smoothed = F.conv2d(mask_4d, kernel_4d, padding=1)
-                
-                # Apply additional Gaussian blur
-                smoothed = self._gaussian_blur_gpu(smoothed.squeeze(0).squeeze(0), 3, 0.3)
-                
-                final_masks[0, i] = smoothed
+                # Convert to numpy for OpenCV operations
+                mask_np = final_masks[0, i].cpu().numpy()
+                mask_np = cv2.filter2D(mask_np, -1, smooth_kernel)
+                mask_np = cv2.GaussianBlur(mask_np, (3, 3), 0.3)
+                final_masks[0, i] = torch.from_numpy(mask_np).to(self.device)
         
         return final_masks
     
@@ -519,58 +517,16 @@ class YOLOPoseMaskGenerator:
     
     def _draw_line_gpu(self, mask, x1, y1, x2, y2, thickness):
         """Draw a line on GPU tensor using PyTorch operations"""
-        print(f"Debug: _draw_line_gpu input mask shape: {mask.shape}")
-        
         if x1 == x2 and y1 == y2:
             # Single point
             if 0 <= x1 < mask.shape[1] and 0 <= y1 < mask.shape[0]:
                 mask[y1, x1] = 1.0
             return mask
         
-        # Create coordinate grids
-        h, w = mask.shape
-        print(f"Debug: Creating meshgrid with h={h}, w={w}")
-        y_coords, x_coords = torch.meshgrid(torch.arange(h, device=self.device), 
-                                           torch.arange(w, device=self.device), indexing='ij')
-        print(f"Debug: y_coords shape: {y_coords.shape}, x_coords shape: {x_coords.shape}")
-        
-        # Calculate distance from line
-        if x2 != x1:
-            # Non-vertical line
-            slope = (y2 - y1) / (x2 - x1)
-            intercept = y1 - slope * x1
-            
-            # Distance from point to line: |ax + by + c| / sqrt(a^2 + b^2)
-            # Line equation: y = slope * x + intercept => slope * x - y + intercept = 0
-            # So a = slope, b = -1, c = intercept
-            a, b, c = slope, -1, intercept
-            
-            # Convert to tensors to ensure proper operations
-            a_tensor = torch.tensor(a, device=self.device, dtype=torch.float32)
-            b_tensor = torch.tensor(b, device=self.device, dtype=torch.float32)
-            c_tensor = torch.tensor(c, device=self.device, dtype=torch.float32)
-            
-            distance = torch.abs(a_tensor * x_coords + b_tensor * y_coords + c_tensor) / torch.sqrt(a_tensor**2 + b_tensor**2)
-        else:
-            # Vertical line
-            distance = torch.abs(x_coords - x1)
-        
-        # Create line mask
-        thickness_tensor = torch.tensor(thickness / 2, device=self.device, dtype=torch.float32)
-        line_mask = distance <= thickness_tensor
-        
-        # Ensure we're within the line segment bounds
-        if x1 != x2:
-            # For non-vertical lines, check if point is within x bounds
-            x_min, x_max = min(x1, x2), max(x1, x2)
-            within_bounds = (x_coords >= x_min) & (x_coords <= x_max)
-        else:
-            # For vertical lines, check if point is within y bounds
-            y_min, y_max = min(y1, y2), max(y1, y2)
-            within_bounds = (y_coords >= y_min) & (y_coords <= y_max)
-        
-        line_mask = line_mask & within_bounds
-        mask[line_mask] = 1.0
+        # Use OpenCV for line drawing to match CPU version exactly
+        mask_np = mask.cpu().numpy()
+        cv2.line(mask_np, (x1, y1), (x2, y2), 1.0, thickness)
+        mask.copy_(torch.from_numpy(mask_np).to(self.device))
         
         return mask
     
@@ -799,19 +755,8 @@ class YOLOPoseMaskGenerator:
         upper_legs_mask = torch.zeros((feat_h, feat_w), device=self.device, dtype=torch.float32)
         
         # Add thighs (hip to knee) - upper leg
-        try:
-            left_thigh = fill_area_between_gpu(11, 13, width=2)  # left thigh
-            print(f"Debug: left_thigh shape: {left_thigh.shape}, expected: {(feat_h, feat_w)}")
-            upper_legs_mask += left_thigh
-        except Exception as e:
-            print(f"Error adding left thigh: {e}")
-        
-        try:
-            right_thigh = fill_area_between_gpu(12, 14, width=2)  # right thigh
-            print(f"Debug: right_thigh shape: {right_thigh.shape}, expected: {(feat_h, feat_w)}")
-            upper_legs_mask += right_thigh
-        except Exception as e:
-            print(f"Error adding right thigh: {e}")
+        upper_legs_mask += fill_area_between_gpu(11, 13, width=2)  # left thigh
+        upper_legs_mask += fill_area_between_gpu(12, 14, width=2)  # right thigh
         
         # Add calves (knee to ankle) - but stop before reaching ankle
         # Create partial calf mask (stop at 75% of the way from knee to ankle)
@@ -838,22 +783,9 @@ class YOLOPoseMaskGenerator:
                 y1, y2 = np.clip([y1, y2], 0, feat_h - 1)
                 
                 temp_mask = torch.zeros((feat_h, feat_w), device=self.device, dtype=torch.float32)
-                print(f"Debug: Before draw_line_gpu - temp_mask shape: {temp_mask.shape}")
                 temp_mask = self._draw_line_gpu(temp_mask, x1, y1, x2, y2, 2)
-                print(f"Debug: After draw_line_gpu - temp_mask shape: {temp_mask.shape}")
                 temp_mask = self._dilate_gpu(temp_mask, 2)
-                print(f"Debug: After dilate_gpu - temp_mask shape: {temp_mask.shape}")
-                
-                print(f"Debug: partial calf temp_mask shape: {temp_mask.shape}, upper_legs_mask shape: {upper_legs_mask.shape}")
-                
-                # Ensure shapes match before adding
-                if temp_mask.shape == upper_legs_mask.shape:
-                    upper_legs_mask += temp_mask
-                else:
-                    print(f"Warning: Shape mismatch - temp_mask: {temp_mask.shape}, upper_legs_mask: {upper_legs_mask.shape}")
-                    # Resize temp_mask to match upper_legs_mask
-                    temp_mask_resized = F.interpolate(temp_mask.unsqueeze(0).unsqueeze(0), size=(feat_h, feat_w), mode='bilinear', align_corners=False).squeeze(0).squeeze(0)
-                    upper_legs_mask += temp_mask_resized
+                upper_legs_mask += temp_mask
 
         # Add knee areas
         for knee_idx in [13, 14]:  # left and right knees
@@ -864,16 +796,10 @@ class YOLOPoseMaskGenerator:
                 y = np.clip(y, 0, feat_h - 1)
                 
                 # Create circular knee area using GPU operations
-                try:
-                    print(f"Debug: Creating knee mask for knee_idx {knee_idx}, x={x}, y={y}, feat_h={feat_h}, feat_w={feat_w}")
-                    y_coords, x_coords = torch.meshgrid(torch.arange(feat_h, device=self.device), 
-                                                       torch.arange(feat_w, device=self.device), indexing='ij')
-                    print(f"Debug: y_coords shape: {y_coords.shape}, x_coords shape: {x_coords.shape}")
-                    knee_mask = ((x_coords - x)**2 + (y_coords - y)**2 <= 4).float()  # radius=2
-                    print(f"Debug: knee_mask shape: {knee_mask.shape}")
-                    upper_legs_mask += knee_mask
-                except Exception as e:
-                    print(f"Error creating knee mask: {e}")
+                y_coords, x_coords = torch.meshgrid(torch.arange(feat_h, device=self.device), 
+                                                   torch.arange(feat_w, device=self.device), indexing='ij')
+                knee_mask = ((x_coords - x)**2 + (y_coords - y)**2 <= 4).float()  # radius=2
+                upper_legs_mask += knee_mask
 
         return upper_legs_mask
     
@@ -947,36 +873,12 @@ class YOLOPoseMaskGenerator:
         if len(points) < 3:
             return mask
         
-        # Create coordinate grids
-        h, w = mask.shape
-        y_coords, x_coords = torch.meshgrid(torch.arange(h, device=self.device), 
-                                           torch.arange(w, device=self.device), indexing='ij')
+        # Use OpenCV for polygon filling to match CPU version exactly
+        mask_np = mask.cpu().numpy()
+        points_array = np.array(points, dtype=np.int32)
+        cv2.fillPoly(mask_np, [points_array], 1.0)
+        mask.copy_(torch.from_numpy(mask_np).to(self.device))
         
-        # Convert points to tensor
-        points_tensor = torch.tensor(points, device=self.device, dtype=torch.float32)
-        
-        # Use ray casting algorithm for point-in-polygon test
-        inside = torch.zeros_like(x_coords, dtype=torch.bool)
-        
-        for i in range(len(points_tensor)):
-            j = (i + 1) % len(points_tensor)
-            xi, yi = points_tensor[i]
-            xj, yj = points_tensor[j]
-            
-            # Ray casting: check if point is to the left of the edge
-            if yi != yj:
-                # Ensure all operations are on tensors
-                yi_tensor = torch.tensor(yi, device=self.device, dtype=torch.float32)
-                yj_tensor = torch.tensor(yj, device=self.device, dtype=torch.float32)
-                xi_tensor = torch.tensor(xi, device=self.device, dtype=torch.float32)
-                xj_tensor = torch.tensor(xj, device=self.device, dtype=torch.float32)
-                
-                t = (y_coords - yi_tensor) / (yj_tensor - yi_tensor)
-                x_intersect = xi_tensor + t * (xj_tensor - xi_tensor)
-                ray_condition = (t >= 0) & (t <= 1) & (x_coords < x_intersect)
-                inside = inside ^ ray_condition
-        
-        mask[inside] = 1.0
         return mask
 
 
