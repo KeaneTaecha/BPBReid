@@ -21,15 +21,14 @@ class Market1501(ImageDataset):
         - images: 12936 (train) + 3368 (query) + 15913 (gallery).
     """
     _junk_pids = [0, -1]
-    dataset_dir = 'Market-1501-v15.09.15-yolo-gpu'
+    dataset_dir = 'Market-1501-v15.09.15'
     masks_base_dir = 'masks'
     dataset_url = 'http://188.138.127.15:81/Datasets/Market-1501-v15.09.15.zip'
 
     masks_dirs = {
-        # dir_name: (parts_num, masks_stack_size, contains_background_mask, parts_names)
-        'pifpaf': (36, False, '.jpg.confidence_fields.npy', None),
-        'pifpaf_maskrcnn_filtering': (36, False, '.npy', None),
-        'yolo_pose': (6, False, '.npy', ['background', 'head', 'upper_body', 'lower_body', 'upper_legs', 'lower_legs']),
+        # dir_name: (parts_num, masks_stack_size, contains_background_mask)
+        'pifpaf': (36, False, '.jpg.confidence_fields.npy'),
+        'pifpaf_maskrcnn_filtering': (36, False, '.npy'),
     }
 
     @staticmethod
@@ -47,7 +46,7 @@ class Market1501(ImageDataset):
             self.masks_parts_numbers, self.has_background, self.masks_suffix = None, None, None
         self.root = osp.abspath(osp.expanduser(root))
         self.dataset_dir = osp.join(self.root, self.dataset_dir)
-        # self.download_dataset(self.dataset_dir, self.dataset_url)  # Commented out since dataset already exists
+        self.download_dataset(self.dataset_dir, self.dataset_url)
         self.masks_dir = masks_dir
 
         # allow alternative directory structure

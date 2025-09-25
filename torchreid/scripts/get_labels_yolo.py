@@ -137,7 +137,7 @@ class ImageDataset(Dataset):
         return len(self.imagery)
 
 
-# YOLOPoseMaskGenerator is now imported from torchreid.utils.yolo_pose_masks
+# YOLOPoseMaskGenerator is imported from torchreid.utils.yolo_pose_masks
 
 
 class BatchYOLOPose:
