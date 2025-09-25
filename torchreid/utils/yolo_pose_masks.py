@@ -1,17 +1,18 @@
 """
-YOLO Pose-based mask generation utility for BPBreID
+YOLO Pose-based mask generation utility for BPBreID (GPU-only)
 
-This module provides shared functionality for generating pose-based masks
+This module provides GPU-accelerated functionality for generating pose-based masks
 using YOLO Pose skeleton structure with 5 body sections:
 1. Head
 2. Upper body (upper half of torso + upper arms)
 3. Lower body (lower half of torso + lower arms)
 4. Upper legs (thighs and upper calf - stops at 75% to ankle)
 5. Foot (lower calf from 75% + ankle + foot area)
+
+All operations are performed on GPU tensors for maximum performance.
 """
 
 from __future__ import division, print_function, absolute_import
-import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -23,13 +24,15 @@ __all__ = ['YOLOPoseMaskGenerator', 'generate_yolo_pose_masks']
 
 class YOLOPoseMaskGenerator:
     """
-    YOLO Pose-based mask generator for BPBreID
+    GPU-accelerated YOLO Pose-based mask generator for BPBreID
+    
+    All mask generation operations are performed on GPU tensors for maximum performance.
     """
     
     def __init__(self, yolo_model, keypoint_confidence_threshold=0.5, 
                  height=384, width=128, device=None):
         """
-        Initialize YOLO Pose mask generator
+        Initialize GPU-accelerated YOLO Pose mask generator
         
         Args:
             yolo_model: YOLO model instance for pose estimation
@@ -47,7 +50,7 @@ class YOLOPoseMaskGenerator:
     def generate_masks(self, person_img: Union[np.ndarray, torch.Tensor], 
                       device: Optional[torch.device] = None) -> Optional[Union[np.ndarray, torch.Tensor]]:
         """
-        Generate pose-based masks using YOLO Pose skeleton structure
+        Generate pose-based masks using GPU-accelerated YOLO Pose skeleton structure
         
         Args:
             person_img: Input person image (BGR format for np.ndarray)
@@ -180,11 +183,18 @@ class YOLOPoseMaskGenerator:
                 print(f"Error generating lower legs mask: {e}")
                 temp_masks[5] = torch.zeros((feat_h, feat_w), device=self.device)
             
-            # Apply morphological operations to smooth masks
-            temp_masks = self._apply_morphological_smoothing(temp_masks)
+
+            
+            # Check temp_masks shape before priority assignment
             
             # Apply priority-based overlap handling
-            final_masks, assignment_map = self._apply_priority_assignment(temp_masks, feat_h, feat_w)
+            try:
+                final_masks, assignment_map = self._apply_priority_assignment(temp_masks, feat_h, feat_w)
+            except Exception as e:
+                print(f"Error in priority assignment: {e}")
+                # Create fallback masks
+                final_masks = torch.zeros(1, 6, feat_h, feat_w, device=self.device)
+                assignment_map = torch.zeros(feat_h, feat_w, device=self.device, dtype=torch.long)
             
             # Apply final smoothing
             final_masks = self._apply_final_smoothing(final_masks)
@@ -202,282 +212,34 @@ class YOLOPoseMaskGenerator:
             print(f"YOLO Pose skeleton mask generation failed: {e}")
             return None
     
-    def _generate_head_mask(self, keypoints, feat_h, feat_w, scale_x, scale_y, draw_skeleton_line):
-        """Generate head mask"""
-        head_mask = np.zeros((feat_h, feat_w), dtype=np.float32)
-        
-        # Create head area around nose keypoint
-        if keypoints[0, 2] > self.keypoint_confidence_threshold:  # Nose
-            nose_x = int(keypoints[0, 0] * scale_x)
-            nose_y = int(keypoints[0, 1] * scale_y)
-            nose_x = np.clip(nose_x, 0, feat_w - 1)
-            nose_y = np.clip(nose_y, 0, feat_h - 1)
-            
-            # Create circular head area
-            head_radius = 4
-            y_coords, x_coords = np.ogrid[:feat_h, :feat_w]
-            head_mask = ((x_coords - nose_x)**2 + (y_coords - nose_y)**2 <= head_radius**2).astype(np.float32)
-            
-            # Add connections to eyes and ears if available
-            head_mask += draw_skeleton_line(head_mask, 0, 1, thickness=1)  # nose to left eye
-            head_mask += draw_skeleton_line(head_mask, 0, 2, thickness=1)  # nose to right eye
-            head_mask += draw_skeleton_line(head_mask, 1, 3, thickness=1)  # left eye to left ear
-            head_mask += draw_skeleton_line(head_mask, 2, 4, thickness=1)  # right eye to right ear
-        
-        return head_mask
     
-    def _generate_upper_body_mask(self, keypoints, feat_h, feat_w, scale_x, scale_y, fill_area_between):
-        """Generate upper body mask"""
-        upper_body_mask = np.zeros((feat_h, feat_w), dtype=np.float32)
-        
-        # Get torso keypoints
-        if (keypoints[5, 2] > self.keypoint_confidence_threshold and keypoints[6, 2] > self.keypoint_confidence_threshold and 
-            keypoints[11, 2] > self.keypoint_confidence_threshold and keypoints[12, 2] > self.keypoint_confidence_threshold):
-            
-            # Calculate torso center and height
-            left_shoulder = keypoints[5]
-            right_shoulder = keypoints[6]
-            left_hip = keypoints[11]
-            right_hip = keypoints[12]
-            
-            # Find midpoint between shoulders and hips
-            shoulder_mid_y = (left_shoulder[1] + right_shoulder[1]) / 2
-            hip_mid_y = (left_hip[1] + right_hip[1]) / 2
-            
-            # Upper body is from shoulders to midpoint of torso
-            upper_torso_y = (shoulder_mid_y + hip_mid_y) / 2
-            
-            # Create upper torso area
-            upper_torso_points = [
-                [left_shoulder[0], left_shoulder[1]],
-                [right_shoulder[0], right_shoulder[1]],
-                [right_shoulder[0], upper_torso_y],
-                [left_shoulder[0], upper_torso_y]
-            ]
-            
-            # Scale and clip points
-            scaled_points = []
-            for point in upper_torso_points:
-                x = int(point[0] * scale_x)
-                y = int(point[1] * scale_y)
-                x = np.clip(x, 0, feat_w - 1)
-                y = np.clip(y, 0, feat_h - 1)
-                scaled_points.append([x, y])
-            
-            if len(scaled_points) >= 3:
-                points = np.array(scaled_points, dtype=np.int32)
-                cv2.fillPoly(upper_body_mask, [points], 1.0)
-        
-        # Add upper arms (shoulder to elbow)
-        upper_body_mask += fill_area_between(5, 7, width=2)  # left upper arm
-        upper_body_mask += fill_area_between(6, 8, width=2)  # right upper arm
-        
-        return upper_body_mask
     
-    def _generate_lower_body_mask(self, keypoints, feat_h, feat_w, scale_x, scale_y, fill_area_between):
-        """Generate lower body mask"""
-        lower_body_mask = np.zeros((feat_h, feat_w), dtype=np.float32)
-        
-        # Get torso keypoints again
-        if (keypoints[5, 2] > self.keypoint_confidence_threshold and keypoints[6, 2] > self.keypoint_confidence_threshold and 
-            keypoints[11, 2] > self.keypoint_confidence_threshold and keypoints[12, 2] > self.keypoint_confidence_threshold):
-            
-            left_shoulder = keypoints[5]
-            right_shoulder = keypoints[6]
-            left_hip = keypoints[11]
-            right_hip = keypoints[12]
-            
-            # Find midpoint between shoulders and hips
-            shoulder_mid_y = (left_shoulder[1] + right_shoulder[1]) / 2
-            hip_mid_y = (left_hip[1] + right_hip[1]) / 2
-            
-            # Lower body is from midpoint of torso to hips
-            upper_torso_y = (shoulder_mid_y + hip_mid_y) / 2
-            
-            # Create lower torso area
-            lower_torso_points = [
-                [left_shoulder[0], upper_torso_y],
-                [right_shoulder[0], upper_torso_y],
-                [right_hip[0], right_hip[1]],
-                [left_hip[0], left_hip[1]]
-            ]
-            
-            # Scale and clip points
-            scaled_points = []
-            for point in lower_torso_points:
-                x = int(point[0] * scale_x)
-                y = int(point[1] * scale_y)
-                x = np.clip(x, 0, feat_w - 1)
-                y = np.clip(y, 0, feat_h - 1)
-                scaled_points.append([x, y])
-            
-            if len(scaled_points) >= 3:
-                points = np.array(scaled_points, dtype=np.int32)
-                cv2.fillPoly(lower_body_mask, [points], 1.0)
-        
-        # Add lower arms (elbow to wrist)
-        lower_body_mask += fill_area_between(7, 9, width=2)  # left lower arm
-        lower_body_mask += fill_area_between(8, 10, width=2)  # right lower arm
-        
-        return lower_body_mask
     
-    def _generate_upper_legs_mask(self, keypoints, feat_h, feat_w, scale_x, scale_y, fill_area_between):
-        """Generate upper legs mask"""
-        upper_legs_mask = np.zeros((feat_h, feat_w), dtype=np.float32)
-        
-        # Add thighs (hip to knee) - upper leg
-        upper_legs_mask += fill_area_between(11, 13, width=2)  # left thigh
-        upper_legs_mask += fill_area_between(12, 14, width=2)  # right thigh
-        
-        # Add calves (knee to ankle) - but stop before reaching ankle
-        # Create partial calf mask (stop at 75% of the way from knee to ankle)
-        for knee_idx, ankle_idx in [(13, 15), (14, 16)]:  # left and right legs
-            if (knee_idx < len(keypoints) and ankle_idx < len(keypoints) and 
-                keypoints[knee_idx, 2] > self.keypoint_confidence_threshold and keypoints[ankle_idx, 2] > self.keypoint_confidence_threshold):
-                
-                knee_x = keypoints[knee_idx, 0]
-                knee_y = keypoints[knee_idx, 1]
-                ankle_x = keypoints[ankle_idx, 0]
-                ankle_y = keypoints[ankle_idx, 1]
-                
-                # Calculate point 75% of the way from knee to ankle
-                partial_x = knee_x + 0.75 * (ankle_x - knee_x)
-                partial_y = knee_y + 0.75 * (ankle_y - knee_y)
-                
-                # Draw partial calf
-                x1 = int(knee_x * scale_x)
-                y1 = int(knee_y * scale_y)
-                x2 = int(partial_x * scale_x)
-                y2 = int(partial_y * scale_y)
-                
-                x1, x2 = np.clip([x1, x2], 0, feat_w - 1)
-                y1, y2 = np.clip([y1, y2], 0, feat_h - 1)
-                
-                temp_mask = np.zeros((feat_h, feat_w), dtype=np.float32)
-                cv2.line(temp_mask, (x1, y1), (x2, y2), 1.0, 2)
-                kernel = np.ones((2, 2), np.uint8)
-                temp_mask = cv2.dilate(temp_mask, kernel, iterations=1)
-                
-                upper_legs_mask += temp_mask
-
-        # Add knee areas
-        for knee_idx in [13, 14]:  # left and right knees
-            if knee_idx < len(keypoints) and keypoints[knee_idx, 2] > self.keypoint_confidence_threshold:
-                x = int(keypoints[knee_idx, 0] * scale_x)
-                y = int(keypoints[knee_idx, 1] * scale_y)
-                x = np.clip(x, 0, feat_w - 1)
-                y = np.clip(y, 0, feat_h - 1)
-                cv2.circle(upper_legs_mask, (x, y), 2, 1.0, -1)
-
-        return upper_legs_mask
     
-    def _generate_lower_legs_mask(self, keypoints, feat_h, feat_w, scale_x, scale_y):
-        """Generate lower legs (foot) mask"""
-        lower_legs_mask = np.zeros((feat_h, feat_w), dtype=np.float32)
-        
-        # Add foot areas around ankles
-        for ankle_idx, knee_idx in [(15, 13), (16, 14)]:  # left and right ankles with corresponding knees
-            if ankle_idx < len(keypoints) and keypoints[ankle_idx, 2] > self.keypoint_confidence_threshold:
-                ankle_x = int(keypoints[ankle_idx, 0] * scale_x)
-                ankle_y = int(keypoints[ankle_idx, 1] * scale_y)
-                ankle_x = np.clip(ankle_x, 0, feat_w - 1)
-                ankle_y = np.clip(ankle_y, 0, feat_h - 1)
-                
-                # Keep ankle circles thin
-                cv2.circle(lower_legs_mask, (ankle_x, ankle_y), 1, 1.0, -1)
-                
-                # Add lower calf area (from 75% of knee-ankle to ankle)
-                if knee_idx < len(keypoints) and keypoints[knee_idx, 2] > self.keypoint_confidence_threshold:
-                    knee_x = keypoints[knee_idx, 0]
-                    knee_y = keypoints[knee_idx, 1]
-                    ankle_x_orig = keypoints[ankle_idx, 0]
-                    ankle_y_orig = keypoints[ankle_idx, 1]
-                    
-                    # Start from 75% point (where upper leg ends)
-                    start_x = knee_x + 0.75 * (ankle_x_orig - knee_x)
-                    start_y = knee_y + 0.75 * (ankle_y_orig - knee_y)
-                    
-                    # Draw lower calf portion
-                    x1 = int(start_x * scale_x)
-                    y1 = int(start_y * scale_y)
-                    x2 = ankle_x
-                    y2 = ankle_y
-                    
-                    x1, x2 = np.clip([x1, x2], 0, feat_w - 1)
-                    y1, y2 = np.clip([y1, y2], 0, feat_h - 1)
-                    
-                    cv2.line(lower_legs_mask, (x1, y1), (x2, y2), 1.0, 1)
-                
-                # Extend foot area below ankle (simulate actual foot)
-                if ankle_y < feat_h - 4:  # Make sure there's room below
-                    center = (ankle_x, min(ankle_y + 2, feat_h - 1))
-                    axes = (1, 1)  # width, height of ellipse
-                    angle = 0
-                    startAngle = 0
-                    endAngle = 360
-                    cv2.ellipse(lower_legs_mask, center, axes, angle, startAngle, endAngle, 1.0, -1)
-                
-                # Add area extending downward from ankle
-                for dy in range(1, 3):  # Extend 2 pixels down
-                    y_pos = ankle_y + dy
-                    if y_pos < feat_h:
-                        width = 1  # Keep narrow
-                        x_start = max(0, ankle_x - width)
-                        x_end = min(feat_w - 1, ankle_x + width)
-                        cv2.line(lower_legs_mask, (x_start, y_pos), (x_end, y_pos), 1.0, 1)
-        
-        return lower_legs_mask
     
-    def _apply_morphological_smoothing(self, temp_masks):
-        """Apply morphological operations to smooth masks using GPU operations"""
-        for i in range(1, 6):
-            if temp_masks[i].max() > 0:
-                # Convert to numpy for OpenCV operations to match CPU version exactly
-                mask_np = temp_masks[i].cpu().numpy()
-                kernel = np.ones((3, 3), np.uint8)
-                mask_np = cv2.dilate(mask_np, kernel, iterations=1)
-                mask_np = cv2.erode(mask_np, kernel, iterations=1)
-                mask_np = cv2.GaussianBlur(mask_np, (3, 3), 0.5)
-                temp_masks[i] = torch.from_numpy(mask_np).to(self.device)
-        return temp_masks
     
     def _apply_priority_assignment(self, temp_masks, feat_h, feat_w):
         """Apply priority-based overlap handling using GPU operations"""
-        # Priority order (higher number = higher priority) - match CPU version exactly:
+        # Priority order (higher number = higher priority):
         # Head: 5 (highest), Upper body: 4, Lower body: 3, Foot: 2, Upper legs: 1 (lowest)
-        part_priorities = {
-            1: 5,  # Head - highest priority
-            2: 4,  # Upper body - second highest priority
-            3: 3,  # Lower body - middle priority
-            4: 1,  # Upper legs (thighs and upper calf) - lowest priority
-            5: 2,  # Foot (lower calf + ankle + foot area) - second lowest priority
-        }
+        part_priorities = torch.tensor([0, 4, 5, 3, 1, 2], device=self.device, dtype=torch.float32)  # 0 for background
         
         # Create final masks with priority-based assignment
         final_masks = torch.zeros(1, 6, feat_h, feat_w, device=self.device)
         
-        # Create assignment map
-        assignment_map = torch.zeros(feat_h, feat_w, device=self.device, dtype=torch.long)
-        priority_map = torch.zeros(feat_h, feat_w, device=self.device)
-        
         # Threshold for considering a pixel as part of a mask
         activation_threshold = 0.2
         
-        # Assign each pixel to the highest priority part - match CPU logic exactly
-        for y in range(feat_h):
-            for x in range(feat_w):
-                max_priority = 0
-                assigned_part = 0
-                
-                for part_idx in range(1, 6):
-                    if temp_masks[part_idx, y, x] > activation_threshold:
-                        part_priority = part_priorities[part_idx]
-                        if part_priority > max_priority:
-                            max_priority = part_priority
-                            assigned_part = part_idx
-                
-                assignment_map[y, x] = assigned_part
-                priority_map[y, x] = max_priority
+        # Create activation masks for each part
+        activation_masks = (temp_masks > activation_threshold).float()
+        
+        # Apply priorities to activation masks - ensure proper broadcasting
+        # temp_masks shape: [6, feat_h, feat_w]
+        # part_priorities shape: [6] -> need to reshape to [6, 1, 1] for broadcasting
+        priority_masks = activation_masks * part_priorities.view(6, 1, 1)
+        
+        # Find the part with highest priority for each pixel
+        max_priorities, assignment_map = torch.max(priority_masks, dim=0)
         
         # Create hard masks based on assignment
         for part_idx in range(1, 6):
@@ -487,18 +249,22 @@ class YOLOPoseMaskGenerator:
     
     def _apply_final_smoothing(self, final_masks):
         """Apply final smoothing to reduce harsh boundaries using GPU operations"""
-        # Use OpenCV operations to match CPU version exactly
-        smooth_kernel = np.array([[1, 1, 1],
-                                [1, 2, 1],
-                                [1, 1, 1]], dtype=np.float32) / 10.0
+        # Create smooth kernel for GPU operations
+        smooth_kernel = torch.tensor([[1, 1, 1],
+                                     [1, 2, 1],
+                                     [1, 1, 1]], device=self.device, dtype=torch.float32) / 10.0
         
         for i in range(1, 6):
             if final_masks[0, i].max() > 0:
-                # Convert to numpy for OpenCV operations
-                mask_np = final_masks[0, i].cpu().numpy()
-                mask_np = cv2.filter2D(mask_np, -1, smooth_kernel)
-                mask_np = cv2.GaussianBlur(mask_np, (3, 3), 0.3)
-                final_masks[0, i] = torch.from_numpy(mask_np).to(self.device)
+                # Apply custom smoothing kernel
+                mask_4d = final_masks[0, i].unsqueeze(0).unsqueeze(0)  # [1, 1, H, W]
+                kernel_4d = smooth_kernel.unsqueeze(0).unsqueeze(0)  # [1, 1, 3, 3]
+                
+                # Apply convolution
+                smoothed = F.conv2d(mask_4d, kernel_4d, padding=1)
+                
+                
+                final_masks[0, i] = smoothed
         
         return final_masks
     
@@ -517,16 +283,55 @@ class YOLOPoseMaskGenerator:
     
     def _draw_line_gpu(self, mask, x1, y1, x2, y2, thickness):
         """Draw a line on GPU tensor using PyTorch operations"""
+        
         if x1 == x2 and y1 == y2:
             # Single point
             if 0 <= x1 < mask.shape[1] and 0 <= y1 < mask.shape[0]:
                 mask[y1, x1] = 1.0
             return mask
         
-        # Use OpenCV for line drawing to match CPU version exactly
-        mask_np = mask.cpu().numpy()
-        cv2.line(mask_np, (x1, y1), (x2, y2), 1.0, thickness)
-        mask.copy_(torch.from_numpy(mask_np).to(self.device))
+        # Create coordinate grids
+        h, w = mask.shape
+        y_coords, x_coords = torch.meshgrid(torch.arange(h, device=self.device), 
+                                           torch.arange(w, device=self.device), indexing='ij')
+        
+        # Calculate distance from line
+        if x2 != x1:
+            # Non-vertical line
+            slope = (y2 - y1) / (x2 - x1)
+            intercept = y1 - slope * x1
+            
+            # Distance from point to line: |ax + by + c| / sqrt(a^2 + b^2)
+            # Line equation: y = slope * x + intercept => slope * x - y + intercept = 0
+            # So a = slope, b = -1, c = intercept
+            a, b, c = slope, -1, intercept
+            
+            # Convert to tensors to ensure proper operations
+            a_tensor = torch.tensor(a, device=self.device, dtype=torch.float32)
+            b_tensor = torch.tensor(b, device=self.device, dtype=torch.float32)
+            c_tensor = torch.tensor(c, device=self.device, dtype=torch.float32)
+            
+            distance = torch.abs(a_tensor * x_coords + b_tensor * y_coords + c_tensor) / torch.sqrt(a_tensor**2 + b_tensor**2)
+        else:
+            # Vertical line
+            distance = torch.abs(x_coords - x1)
+        
+        # Create line mask
+        thickness_tensor = torch.tensor(thickness / 2, device=self.device, dtype=torch.float32)
+        line_mask = distance <= thickness_tensor
+        
+        # Ensure we're within the line segment bounds
+        if x1 != x2:
+            # For non-vertical lines, check if point is within x bounds
+            x_min, x_max = min(x1, x2), max(x1, x2)
+            within_bounds = (x_coords >= x_min) & (x_coords <= x_max)
+        else:
+            # For vertical lines, check if point is within y bounds
+            y_min, y_max = min(y1, y2), max(y1, y2)
+            within_bounds = (y_coords >= y_min) & (y_coords <= y_max)
+        
+        line_mask = line_mask & within_bounds
+        mask[line_mask] = 1.0
         
         return mask
     
@@ -596,42 +401,9 @@ class YOLOPoseMaskGenerator:
         
         return result
     
-    def _gaussian_blur_gpu(self, mask, kernel_size=3, sigma=0.5):
-        """Apply Gaussian blur using GPU-accelerated convolution"""
-        if kernel_size <= 1:
-            return mask
-        
-        # Create Gaussian kernel
-        kernel = self._create_gaussian_kernel(kernel_size, sigma)
-        
-        # Add batch and channel dimensions
-        mask_4d = mask.unsqueeze(0).unsqueeze(0)  # [1, 1, H, W]
-        
-        # Apply convolution
-        padding = kernel_size // 2
-        blurred = F.conv2d(mask_4d, kernel, padding=padding)
-        
-        return blurred.squeeze(0).squeeze(0)  # Remove batch and channel dimensions
-    
-    def _create_gaussian_kernel(self, kernel_size, sigma):
-        """Create Gaussian kernel for convolution"""
-        # Create 1D Gaussian kernel
-        x = torch.arange(kernel_size, device=self.device, dtype=torch.float32)
-        x = x - kernel_size // 2
-        kernel_1d = torch.exp(-(x**2) / (2 * sigma**2))
-        kernel_1d = kernel_1d / kernel_1d.sum()
-        
-        # Create 2D kernel
-        kernel_2d = kernel_1d.unsqueeze(0) * kernel_1d.unsqueeze(1)
-        kernel_2d = kernel_2d / kernel_2d.sum()
-        
-        # Add batch and channel dimensions
-        kernel_4d = kernel_2d.unsqueeze(0).unsqueeze(0)  # [1, 1, H, W]
-        
-        return kernel_4d
     
     def _generate_head_mask_gpu(self, keypoints, feat_h, feat_w, scale_x, scale_y, draw_skeleton_line_gpu):
-        """Generate head mask using GPU operations"""
+        """Generate head mask using GPU operations - oval shape with more height than width"""
         head_mask = torch.zeros((feat_h, feat_w), device=self.device, dtype=torch.float32)
         
         # Create head area around nose keypoint
@@ -641,13 +413,21 @@ class YOLOPoseMaskGenerator:
             nose_x = np.clip(nose_x, 0, feat_w - 1)
             nose_y = np.clip(nose_y, 0, feat_h - 1)
             
-            # Create circular head area using GPU operations
-            head_radius = 4
+            # Create oval head area using GPU operations (more height than width)
             y_coords, x_coords = torch.meshgrid(torch.arange(feat_h, device=self.device), 
                                               torch.arange(feat_w, device=self.device), indexing='ij')
-            head_mask = ((x_coords - nose_x)**2 + (y_coords - nose_y)**2 <= head_radius**2).float()
             
-            # Add connections to eyes and ears if available
+            # Oval parameters: height > width for more natural head shape
+            head_height = 5 # Vertical radius (height)
+            head_width = 3   # Horizontal radius (width)
+            
+            # Create oval shape: (x-center)^2/a^2 + (y-center)^2/b^2 <= 1
+            # where a = width, b = height
+            oval_mask = ((x_coords - nose_x)**2 / (head_width**2) + 
+                        (y_coords - nose_y)**2 / (head_height**2)) <= 1.0
+            head_mask = oval_mask.float()
+            
+            # Add connections to eyes and ears if available (thinner lines to maintain oval shape)
             head_mask += draw_skeleton_line_gpu(0, 1, thickness=1)  # nose to left eye
             head_mask += draw_skeleton_line_gpu(0, 2, thickness=1)  # nose to right eye
             head_mask += draw_skeleton_line_gpu(1, 3, thickness=1)  # left eye to left ear
@@ -697,11 +477,75 @@ class YOLOPoseMaskGenerator:
                 # Use GPU-based polygon filling
                 upper_body_mask = self._fill_polygon_gpu(upper_body_mask, scaled_points)
         
-        # Add upper arms (shoulder to elbow)
-        upper_body_mask += fill_area_between_gpu(5, 7, width=2)  # left upper arm
-        upper_body_mask += fill_area_between_gpu(6, 8, width=2)  # right upper arm
+        # Add upper arms as more natural shapes instead of thick lines
+        # Left upper arm (shoulder to elbow)
+        if (keypoints[5, 2] > self.keypoint_confidence_threshold and keypoints[7, 2] > self.keypoint_confidence_threshold):
+            left_arm_mask = self._create_arm_mask_gpu(keypoints[5], keypoints[7], feat_h, feat_w, scale_x, scale_y)
+            upper_body_mask += left_arm_mask
+        
+        # Right upper arm (shoulder to elbow)
+        if (keypoints[6, 2] > self.keypoint_confidence_threshold and keypoints[8, 2] > self.keypoint_confidence_threshold):
+            right_arm_mask = self._create_arm_mask_gpu(keypoints[6], keypoints[8], feat_h, feat_w, scale_x, scale_y)
+            upper_body_mask += right_arm_mask
         
         return upper_body_mask
+    
+    def _create_arm_mask_gpu(self, shoulder_kp, elbow_kp, feat_h, feat_w, scale_x, scale_y):
+        """Create a more natural arm mask between shoulder and elbow keypoints"""
+        arm_mask = torch.zeros((feat_h, feat_w), device=self.device, dtype=torch.float32)
+        
+        # Scale keypoints
+        shoulder_x = int(shoulder_kp[0] * scale_x)
+        shoulder_y = int(shoulder_kp[1] * scale_y)
+        elbow_x = int(elbow_kp[0] * scale_x)
+        elbow_y = int(elbow_kp[1] * scale_y)
+        
+        # Clip coordinates
+        shoulder_x = np.clip(shoulder_x, 0, feat_w - 1)
+        shoulder_y = np.clip(shoulder_y, 0, feat_h - 1)
+        elbow_x = np.clip(elbow_x, 0, feat_w - 1)
+        elbow_y = np.clip(elbow_y, 0, feat_h - 1)
+        
+        # Create coordinate grids
+        y_coords, x_coords = torch.meshgrid(torch.arange(feat_h, device=self.device), 
+                                           torch.arange(feat_w, device=self.device), indexing='ij')
+        
+        # Calculate arm direction and length
+        dx = elbow_x - shoulder_x
+        dy = elbow_y - shoulder_y
+        arm_length = torch.sqrt(torch.tensor(dx**2 + dy**2, device=self.device, dtype=torch.float32))
+        
+        if arm_length > 0:
+            # Normalize direction vector
+            dx_norm = dx / arm_length
+            dy_norm = dy / arm_length
+            
+            # Create perpendicular vector for arm width
+            perp_x = -dy_norm
+            perp_y = dx_norm
+            
+            # Calculate distance from each point to the arm line
+            # Vector from shoulder to point
+            vec_x = x_coords - shoulder_x
+            vec_y = y_coords - shoulder_y
+            
+            # Project onto arm direction to get position along arm
+            t = dx_norm * vec_x + dy_norm * vec_y
+            
+            # Distance from arm line (perpendicular distance)
+            perp_dist = torch.abs(perp_x * vec_x + perp_y * vec_y)
+            
+            # Arm width varies along the length (thicker at shoulder, thinner at elbow)
+            # Use a linear interpolation for width
+            max_width = 3.0  # Maximum width at shoulder
+            min_width = 1.5  # Minimum width at elbow
+            arm_width = max_width - (max_width - min_width) * torch.clamp(t / arm_length, 0, 1)
+            
+            # Create arm mask: points that are close to the line and within the arm segment
+            on_arm = (perp_dist <= arm_width) & (t >= 0) & (t <= arm_length)
+            arm_mask[on_arm] = 1.0
+        
+        return arm_mask
     
     def _generate_lower_body_mask_gpu(self, keypoints, feat_h, feat_w, scale_x, scale_y, fill_area_between_gpu):
         """Generate lower body mask using GPU operations"""
@@ -744,9 +588,16 @@ class YOLOPoseMaskGenerator:
                 # Use GPU-based polygon filling
                 lower_body_mask = self._fill_polygon_gpu(lower_body_mask, scaled_points)
         
-        # Add lower arms (elbow to wrist)
-        lower_body_mask += fill_area_between_gpu(7, 9, width=2)  # left lower arm
-        lower_body_mask += fill_area_between_gpu(8, 10, width=2)  # right lower arm
+        # Add lower arms (elbow to wrist) using the same method as upper arms
+        # Left lower arm (elbow to wrist)
+        if (keypoints[7, 2] > self.keypoint_confidence_threshold and keypoints[9, 2] > self.keypoint_confidence_threshold):
+            left_lower_arm_mask = self._create_arm_mask_gpu(keypoints[7], keypoints[9], feat_h, feat_w, scale_x, scale_y)
+            lower_body_mask += left_lower_arm_mask
+        
+        # Right lower arm (elbow to wrist)
+        if (keypoints[8, 2] > self.keypoint_confidence_threshold and keypoints[10, 2] > self.keypoint_confidence_threshold):
+            right_lower_arm_mask = self._create_arm_mask_gpu(keypoints[8], keypoints[10], feat_h, feat_w, scale_x, scale_y)
+            lower_body_mask += right_lower_arm_mask
         
         return lower_body_mask
     
@@ -754,38 +605,49 @@ class YOLOPoseMaskGenerator:
         """Generate upper legs mask using GPU operations"""
         upper_legs_mask = torch.zeros((feat_h, feat_w), device=self.device, dtype=torch.float32)
         
-        # Add thighs (hip to knee) - upper leg
-        upper_legs_mask += fill_area_between_gpu(11, 13, width=2)  # left thigh
-        upper_legs_mask += fill_area_between_gpu(12, 14, width=2)  # right thigh
+        # Add thighs (hip to knee) - upper leg using the same method as upper arms
+        # Left thigh (hip to knee)
+        if (keypoints[11, 2] > self.keypoint_confidence_threshold and keypoints[13, 2] > self.keypoint_confidence_threshold):
+            left_thigh_mask = self._create_arm_mask_gpu(keypoints[11], keypoints[13], feat_h, feat_w, scale_x, scale_y)
+            upper_legs_mask += left_thigh_mask
         
-        # Add calves (knee to ankle) - but stop before reaching ankle
-        # Create partial calf mask (stop at 75% of the way from knee to ankle)
-        for knee_idx, ankle_idx in [(13, 15), (14, 16)]:  # left and right legs
-            if (knee_idx < len(keypoints) and ankle_idx < len(keypoints) and 
-                keypoints[knee_idx, 2] > self.keypoint_confidence_threshold and keypoints[ankle_idx, 2] > self.keypoint_confidence_threshold):
-                
-                knee_x = keypoints[knee_idx, 0]
-                knee_y = keypoints[knee_idx, 1]
-                ankle_x = keypoints[ankle_idx, 0]
-                ankle_y = keypoints[ankle_idx, 1]
-                
-                # Calculate point 75% of the way from knee to ankle
-                partial_x = knee_x + 0.75 * (ankle_x - knee_x)
-                partial_y = knee_y + 0.75 * (ankle_y - knee_y)
-                
-                # Draw partial calf using GPU line drawing
-                x1 = int(knee_x * scale_x)
-                y1 = int(knee_y * scale_y)
-                x2 = int(partial_x * scale_x)
-                y2 = int(partial_y * scale_y)
-                
-                x1, x2 = np.clip([x1, x2], 0, feat_w - 1)
-                y1, y2 = np.clip([y1, y2], 0, feat_h - 1)
-                
-                temp_mask = torch.zeros((feat_h, feat_w), device=self.device, dtype=torch.float32)
-                temp_mask = self._draw_line_gpu(temp_mask, x1, y1, x2, y2, 2)
-                temp_mask = self._dilate_gpu(temp_mask, 2)
-                upper_legs_mask += temp_mask
+        # Right thigh (hip to knee)
+        if (keypoints[12, 2] > self.keypoint_confidence_threshold and keypoints[14, 2] > self.keypoint_confidence_threshold):
+            right_thigh_mask = self._create_arm_mask_gpu(keypoints[12], keypoints[14], feat_h, feat_w, scale_x, scale_y)
+            upper_legs_mask += right_thigh_mask
+        
+        # Add partial calves (knee to 75% toward ankle) using the same method as upper arms
+        # Left calf (knee to 75% toward ankle)
+        if (keypoints[13, 2] > self.keypoint_confidence_threshold and keypoints[15, 2] > self.keypoint_confidence_threshold):
+            # Calculate point 75% of the way from knee to ankle
+            knee_x = keypoints[13, 0]
+            knee_y = keypoints[13, 1]
+            ankle_x = keypoints[15, 0]
+            ankle_y = keypoints[15, 1]
+            
+            partial_x = knee_x + 0.75 * (ankle_x - knee_x)
+            partial_y = knee_y + 0.75 * (ankle_y - knee_y)
+            
+            # Create partial calf using the same method as arms
+            partial_calf_kp = np.array([partial_x, partial_y, keypoints[15, 2]])  # Use ankle confidence
+            left_calf_mask = self._create_arm_mask_gpu(keypoints[13], partial_calf_kp, feat_h, feat_w, scale_x, scale_y)
+            upper_legs_mask += left_calf_mask
+        
+        # Right calf (knee to 75% toward ankle)
+        if (keypoints[14, 2] > self.keypoint_confidence_threshold and keypoints[16, 2] > self.keypoint_confidence_threshold):
+            # Calculate point 75% of the way from knee to ankle
+            knee_x = keypoints[14, 0]
+            knee_y = keypoints[14, 1]
+            ankle_x = keypoints[16, 0]
+            ankle_y = keypoints[16, 1]
+            
+            partial_x = knee_x + 0.75 * (ankle_x - knee_x)
+            partial_y = knee_y + 0.75 * (ankle_y - knee_y)
+            
+            # Create partial calf using the same method as arms
+            partial_calf_kp = np.array([partial_x, partial_y, keypoints[16, 2]])  # Use ankle confidence
+            right_calf_mask = self._create_arm_mask_gpu(keypoints[14], partial_calf_kp, feat_h, feat_w, scale_x, scale_y)
+            upper_legs_mask += right_calf_mask
 
         # Add knee areas
         for knee_idx in [13, 14]:  # left and right knees
@@ -796,10 +658,13 @@ class YOLOPoseMaskGenerator:
                 y = np.clip(y, 0, feat_h - 1)
                 
                 # Create circular knee area using GPU operations
-                y_coords, x_coords = torch.meshgrid(torch.arange(feat_h, device=self.device), 
-                                                   torch.arange(feat_w, device=self.device), indexing='ij')
-                knee_mask = ((x_coords - x)**2 + (y_coords - y)**2 <= 4).float()  # radius=2
-                upper_legs_mask += knee_mask
+                try:
+                    y_coords, x_coords = torch.meshgrid(torch.arange(feat_h, device=self.device), 
+                                                       torch.arange(feat_w, device=self.device), indexing='ij')
+                    knee_mask = ((x_coords - x)**2 + (y_coords - y)**2 <= 4).float()  # radius=2
+                    upper_legs_mask += knee_mask
+                except Exception as e:
+                    print(f"Error creating knee mask: {e}")
 
         return upper_legs_mask
     
@@ -869,15 +734,55 @@ class YOLOPoseMaskGenerator:
         return lower_legs_mask
     
     def _fill_polygon_gpu(self, mask, points):
-        """Fill polygon using GPU operations"""
+        """Fill polygon using simple and fast GPU operations"""
         if len(points) < 3:
             return mask
         
-        # Use OpenCV for polygon filling to match CPU version exactly
-        mask_np = mask.cpu().numpy()
-        points_array = np.array(points, dtype=np.int32)
-        cv2.fillPoly(mask_np, [points_array], 1.0)
-        mask.copy_(torch.from_numpy(mask_np).to(self.device))
+        h, w = mask.shape
+        
+        # Convert points to tensor once
+        points_tensor = torch.tensor(points, device=self.device, dtype=torch.float32)
+        
+        # Simple approach: use scanline algorithm optimized for GPU
+        # Find min/max y coordinates
+        y_min = int(torch.min(points_tensor[:, 1]).item())
+        y_max = int(torch.max(points_tensor[:, 1]).item())
+        
+        # Clip to mask bounds
+        y_min = max(0, min(y_min, h - 1))
+        y_max = max(0, min(y_max, h - 1))
+        
+        if y_min >= y_max:
+            return mask
+        
+        # For each scanline, find intersections with polygon edges
+        for y in range(y_min, y_max + 1):
+            intersections = []
+            
+            # Check each edge
+            for i in range(len(points_tensor)):
+                j = (i + 1) % len(points_tensor)
+                xi, yi = points_tensor[i]
+                xj, yj = points_tensor[j]
+                
+                # Check if edge intersects with scanline y
+                if (yi <= y < yj) or (yj <= y < yi):
+                    if yi != yj:  # Avoid division by zero
+                        # Calculate x intersection
+                        x_intersect = xi + (y - yi) * (xj - xi) / (yj - yi)
+                        intersections.append(x_intersect)
+            
+            # Sort intersections
+            intersections.sort()
+            
+            # Fill between pairs of intersections
+            for i in range(0, len(intersections), 2):
+                if i + 1 < len(intersections):
+                    x_start = max(0, int(intersections[i]))
+                    x_end = min(w - 1, int(intersections[i + 1]))
+                    
+                    if x_start <= x_end:
+                        mask[y, x_start:x_end + 1] = 1.0
         
         return mask
 
@@ -887,7 +792,7 @@ def generate_yolo_pose_masks(yolo_model, person_img: Union[np.ndarray, torch.Ten
                            height: int = 384, width: int = 128,
                            device: Optional[torch.device] = None) -> Optional[Union[np.ndarray, torch.Tensor]]:
     """
-    Convenience function to generate YOLO pose masks
+    Convenience function to generate GPU-accelerated YOLO pose masks
     
     Args:
         yolo_model: YOLO model instance for pose estimation
