@@ -19,6 +19,8 @@ model:
     masks:
       dir: 'pifpaf_maskrcnn_filtering'
       preprocess: 'five_v'
+      parts_num: 5  # Added this line
+      parts_names: ['head_mask', 'upper_arms_torso_mask', 'lower_arms_torso_mask', 'legs_mask', 'feet_mask']  # Added this line
 
 test:
   evaluate: True
