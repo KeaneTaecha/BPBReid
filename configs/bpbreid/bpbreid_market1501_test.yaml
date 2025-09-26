@@ -1,5 +1,5 @@
 data:
-  root: '~/datasets/reid'
+  root: '/home/kunanont/datasets/reid'
   sources: ['market1501']
   targets: ['market1501']
   height: 384
@@ -19,8 +19,8 @@ model:
     masks:
       dir: 'pifpaf_maskrcnn_filtering'
       preprocess: 'five_v'
-      parts_num: 5  # Added this line
-      parts_names: ['head_mask', 'upper_arms_torso_mask', 'lower_arms_torso_mask', 'legs_mask', 'feet_mask']  # Added this line
+      # parts_num: 5  # Added this line
+      # parts_names: ['head_mask', 'upper_arms_torso_mask', 'lower_arms_torso_mask', 'legs_mask', 'feet_mask']  # Added this line
 
 test:
   evaluate: True
