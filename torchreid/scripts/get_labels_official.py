@@ -105,10 +105,12 @@ def get_label_paths(is_mask, img_paths, dataset_dir):
     relative_paths, file_paths = [], []
     for img_name in img_paths:
         relative_path = format_path(img_name, dataset_dir)
+        # Remove the original file extension before adding .npy
+        base_path = os.path.splitext(relative_path)[0]
         if not is_mask:
-            file_path = os.path.join(dataset_dir, "masks", "pifpaf", relative_path + ".confidence_fields.npy")
+            file_path = os.path.join(dataset_dir, "masks", "pifpaf", base_path + ".confidence_fields.npy")
         else:
-            file_path = os.path.join(dataset_dir, "masks", "pifpaf_maskrcnn_filtering", relative_path + ".npy")
+            file_path = os.path.join(dataset_dir, "masks", "pifpaf_maskrcnn_filtering", base_path + ".npy")
         relative_paths.append(relative_path)
         file_paths.append(file_path)
     return relative_paths, file_paths
