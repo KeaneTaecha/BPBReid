@@ -40,8 +40,8 @@ def format_path(img_path, dataset_dir):
     """Convert image path to relative path within dataset directory."""
     # Get relative path from dataset directory
     rel_path = os.path.relpath(img_path, dataset_dir)
-    # Remove the .jpg extension
-    rel_path = rel_path.replace('.jpg', '')
+    # Remove the file extension properly using os.path.splitext
+    rel_path = os.path.splitext(rel_path)[0]
     return rel_path
 
 
@@ -50,7 +50,7 @@ def get_label_paths(img_paths, dataset_dir):
     relative_paths = []
     file_paths = []
     for img_path in img_paths:
-        # Get relative path without .jpg extension
+        # Get relative path and remove file extension
         relative_path = format_path(img_path, dataset_dir)
         # Create label path with .npy extension
         file_path = os.path.join(dataset_dir, "masks", "yolo_pose", relative_path + ".npy")
