@@ -5,6 +5,7 @@ data:
   height: 384
   width: 128
   transforms: [ 'rc', 're' ]
+  workers: 0
 
 model:
   name: 'bpbreid'
