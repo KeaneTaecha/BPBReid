@@ -19,7 +19,8 @@ model:
     test_embeddings: [ 'bn_foreg', 'parts' ]
     masks:
       dir: 'pifpaf_maskrcnn_filtering'
-      preprocess: 'five_v'
+      preprocess: 'strp_6'
+      parts_num: 6
 
 test:
   evaluate: True
